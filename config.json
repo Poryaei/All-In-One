@@ -1,0 +1,10 @@
+{
+    "api_id": 8086441,
+    "api_hash": "2a305482a93b5a762d2acd4be90dd00f",
+    "admin": 6135970338,
+    "auto_upgrade": true,
+    "max_days_for_return": 30,
+    "max_charge_level": 5,
+    "max_energy_level": 10,
+    "max_tap_level": 10
+}
