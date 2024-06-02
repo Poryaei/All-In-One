@@ -140,7 +140,7 @@ async def answer(event):
         await _sendMessage(f'🟣 TapSwap: `{tapswap_client.shares()}`\n🐹 Hamster: `{round(hamster_client.balanceCoins())}`\n❣️ Cex Io: `{cex_io_client.balance()}`\n💡 Next Tap in: `{_hours2} hours and {_minutes2} minutes`')
     
     elif text == '/url':
-        await _sendMessage(f'💜 TapSwap: `{tapswap_url.url}`\n\n🐹 Hamster: `{hamster_url.url}`\n\n❣️ Cex: `{cex_io_url.url}`')
+        await _sendMessage(f'💜 TapSwap: `{tapswap_url}`\n\n🐹 Hamster: `{hamster_url}`\n\n❣️ Cex: `{cex_io_url}`')
     
     elif text == '/stats':
         stats = tapswap_client.tap_stats()
