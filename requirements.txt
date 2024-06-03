@@ -1,0 +1,7 @@
+requests
+cloudscraper
+bs4
+colorlog
+aiocron
+psutil
+telethon
