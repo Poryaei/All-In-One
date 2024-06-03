@@ -3,7 +3,7 @@ import urllib
 import time
 import random
 
-from Scripts.logger import setup_custom_logger
+from scripts.logger import setup_custom_logger
 
 class HamsterCombat():
     def __init__(self, url) -> None:
