@@ -3,8 +3,12 @@ import urllib
 import time
 from datetime import datetime
 
+from scripts.logger import setup_custom_logger
+
 class Cex_IO:
     def __init__(self, url, admin:int):
+        
+        self.logger  = setup_custom_logger("CexIO")
         
         self.headers = {
             "accept": "/",
@@ -59,7 +63,7 @@ class Cex_IO:
         ).json()
         
         if r['status'] == 'ok':
-            print(f'[+] Starting Task: {taskId}')
+            self.logger.debug(f'[+] Starting Task: {taskId}')
         
         return r
     
@@ -79,7 +83,7 @@ class Cex_IO:
         ).json()
         
         if r['status'] == 'ok' or ('reason' in r['data'] and r['data']['reason'] == 'Task is not at ReadyToCheck state'):
-            print(f'[+] Claim Task Reward: {taskId}')
+            self.logger.debug(f'[+] Claim Task Reward: {taskId}')
             self.claimTask(taskId)
         
         return r
@@ -100,7 +104,7 @@ class Cex_IO:
         ).json()
         
         if r['status'] == 'ok' and 'claimedBalance' in r['data']:
-            print(f'[+] Task Reward: {r["data"]["claimedBalance"]}')
+            self.logger.debug(f'[+] Task Reward: {r["data"]["claimedBalance"]}')
         
         return r
         
@@ -163,7 +167,6 @@ class Cex_IO:
         return timestamp - time.time()
     
     def farms_end_time(self):
-        print(self._farms_end_time - time.time())
         return self._farms_end_time - time.time()
     
     def check_for_clicks(self):
