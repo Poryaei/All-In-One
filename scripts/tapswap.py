@@ -124,7 +124,7 @@ class TapSwap:
                     chq_result = self.extract_chq_result(response['chq'])
                     payload['chr'] = chq_result
                     
-                    self.logger.debug("[~] ByPass CHQ:  ", chq_result)
+                    self.logger.debug("[~] ByPass CHQ:  " + str(e))
                     response = requests.post(
                         'https://api.tapswap.ai/api/account/login',
                         headers=self.headers,
@@ -147,11 +147,11 @@ class TapSwap:
                 try:
                     self.check_update(response)
                 except Exception as e:
-                    self.logger.warning('[!] Error in upgrade: ', e)
+                    self.logger.warning('[!] Error in upgrade: ' + str(e))
                     
                 return response['access_token']
             except Exception as e:
-                self.logger.warning('[!] Error in auth: ', e)
+                self.logger.warning('[!] Error in auth: ' + str(e))
                 time.sleep(3)
             finally:
                 maxtries -=1
@@ -184,7 +184,7 @@ class TapSwap:
                 return self.headers_requests
 
             except Exception as e:
-                self.logger.warning('[!] Error in update headers: ', e)
+                self.logger.warning('[!] Error in update headers: ' + str(e))
                 time.sleep(3)
                 
 
@@ -300,7 +300,7 @@ class TapSwap:
                 ).json()
                 return response
             except Exception as e:
-                self.logger.warning("[!] Error in Tapping:", e)
+                self.logger.warning("[!] Error in Tapping:  " + str(e))
                 time.sleep(1)
     
     def sleep_time(self, num_clicks):
