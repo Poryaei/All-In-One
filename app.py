@@ -2,9 +2,9 @@ import asyncio
 import os, json, time, aiocron, psutil
 
 from threading import Thread
-from tapswap import TapSwap
-from hamster import HamsterCombat
-from cexio import Cex_IO
+from Scripts.tapswap import TapSwap
+from Scripts.hamster import HamsterCombat
+from Scripts.cexio import Cex_IO
 
 from telethon.sync import TelegramClient
 from telethon.sync import functions, events
@@ -16,9 +16,15 @@ with open('config.json') as f:
     api_hash         = data['api_hash']
     admin            = data['admin']
     auto_upgrade     = data['auto_upgrade']
+    max_tap_level    = data['max_tap_level']
     max_charge_level = data['max_charge_level']
     max_energy_level = data['max_energy_level']
-    max_tap_level    = data['max_tap_level']
+    cexio_clicker    = data['cexio_clicker']
+    tapswap_clicker  = data['tapswap_clicker']
+    hamster_clicker  = data['hamster_clicker']
+    
+    
+    
 
 if not os.path.exists('sessions'):
     os.mkdir('sessions')
@@ -233,9 +239,11 @@ tapswap_client = TapSwap(tapswap_url, auto_upgrade, max_charge_level, max_energy
 hamster_client = HamsterCombat(hamster_url)
 cex_io_client  = Cex_IO(cex_io_url, client_id)
 
+if cexio_clicker == "on":
+    Thread(target=cex_io_client.do_tasks).start()
 
-Thread(target=hamster_client.start).start()
-Thread(target=cex_io_client.do_tasks).start()
+if hamster_clicker == "on":
+    Thread(target=hamster_client.start).start()
 
 
 print(tapswap_url)
@@ -249,29 +257,35 @@ async def sendTaps():
     if db['click'] != 'on':
         return
     
-
-    if nextMineTime - time.time() > 1 or mining:
-        print(f'[+] Waiting {round(nextMineTime - time.time())} seconds for next tap.')
-        return
     
-    # ---- Check Energy:
-    mining   = True
-    try:
-        Thread(target=tapswap_client.click_all).start()
-        time_to_recharge = tapswap_client.time_to_recharge()
-        nextMineTime = time.time()+time_to_recharge
-        print(f"[~] Sleeping: {time_to_recharge} seconds ...")
-    except Exception as e:
-        time_to_recharge = 0
+    if tapswap_clicker == "on":
         
-        print("[!] Error in click all: ", e)
+        if nextMineTime - time.time() > 1 or mining:
+            print(f'[+] Waiting {round(nextMineTime - time.time())} seconds for next tap.')
+            return
+        
+        mining = True
+        
+        try:
+            Thread(target=tapswap_client.click_all).start()
+            time_to_recharge = tapswap_client.time_to_recharge()
+            nextMineTime = time.time()+time_to_recharge
+            print(f"[~] Sleeping: {time_to_recharge} seconds ...")
+        except Exception as e:
+            time_to_recharge = 0
+            
+            print("[!] Error in click all: ", e)
+        
+        mining = False
     
-    try:
-        cex_io_client.check_for_clicks()
-    except Exception as e:        
-        print("[!] Error in Cex_IO Click: ", e)
+    if cexio_clicker == "on":
+        try:
+            if cex_io_client.farms_end_time() < 1:
+                cex_io_client.check_for_clicks()
+        except Exception as e:        
+            print("[!] Error in Cex_IO Click: ", e)
     
-    mining = False
+    
 
 
 @client.on(events.NewMessage())
