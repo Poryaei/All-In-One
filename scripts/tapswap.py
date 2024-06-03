@@ -7,8 +7,8 @@ import cloudscraper
 import sys
 
 from bs4 import BeautifulSoup
-from Scripts.BypassTLS import BypassTLSv1_3
-from Scripts.logger import setup_custom_logger
+from scripts.BypassTLS import BypassTLSv1_3
+from scripts.logger import setup_custom_logger
 
 class TapSwap:
     def __init__(self, url: str, auto_upgrade:bool, max_charge_level:int, max_energy_level:int, max_tap_level:int):
