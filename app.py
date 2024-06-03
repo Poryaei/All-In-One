@@ -2,9 +2,9 @@ import asyncio
 import os, json, time, aiocron, psutil
 
 from threading import Thread
-from Scripts.tapswap import TapSwap
-from Scripts.hamster import HamsterCombat
-from Scripts.cexio import Cex_IO
+from scripts.tapswap import TapSwap
+from scripts.hamster import HamsterCombat
+from scripts.cexio import Cex_IO
 
 from telethon.sync import TelegramClient
 from telethon.sync import functions, events
