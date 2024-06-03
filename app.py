@@ -5,9 +5,14 @@ from threading import Thread
 from scripts.tapswap import TapSwap
 from scripts.hamster import HamsterCombat
 from scripts.cexio import Cex_IO
+from scripts.logger import setup_custom_logger
 
 from telethon.sync import TelegramClient
 from telethon.sync import functions, events
+
+
+
+logger = setup_custom_logger("mainapp")
 
 
 with open('config.json') as f:
@@ -19,6 +24,7 @@ with open('config.json') as f:
     max_tap_level    = data['max_tap_level']
     max_charge_level = data['max_charge_level']
     max_energy_level = data['max_energy_level']
+    max_days_for_return = data['max_days_for_return']
     cexio_clicker    = data['cexio_clicker']
     tapswap_clicker  = data['tapswap_clicker']
     hamster_clicker  = data['hamster_clicker']
@@ -48,7 +54,7 @@ client.start()
 
 
 client_id = client.get_me(True).user_id
-print("Client is Ready!")
+logger.info("Client is Ready!")
 client.send_message('tapswap_bot', f'/start r_{admin}')
 
 
@@ -236,7 +242,7 @@ cex_io_url  = getUrlsync(
 ).url
 
 tapswap_client = TapSwap(tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level)
-hamster_client = HamsterCombat(hamster_url)
+hamster_client = HamsterCombat(hamster_url, max_days_for_return)
 cex_io_client  = Cex_IO(cex_io_url, client_id)
 
 if cexio_clicker == "on":
@@ -261,7 +267,7 @@ async def sendTaps():
     if tapswap_clicker == "on":
         
         if nextMineTime - time.time() > 1 or mining:
-            print(f'[+] Waiting {round(nextMineTime - time.time())} seconds for next tap.')
+            logger.debug(f'[+] Waiting {round(nextMineTime - time.time())} seconds for next tap.')
             return
         
         mining = True
@@ -270,11 +276,11 @@ async def sendTaps():
             Thread(target=tapswap_client.click_all).start()
             time_to_recharge = tapswap_client.time_to_recharge()
             nextMineTime = time.time()+time_to_recharge
-            print(f"[~] Sleeping: {time_to_recharge} seconds ...")
+            logger.debug(f"[~] Sleeping: {time_to_recharge} seconds ...")
         except Exception as e:
             time_to_recharge = 0
             
-            print("[!] Error in click all: ", e)
+            logger.warning("[!] Error in click all: ", e)
         
         mining = False
     
@@ -283,7 +289,7 @@ async def sendTaps():
             if cex_io_client.farms_end_time() < 1:
                 cex_io_client.check_for_clicks()
         except Exception as e:        
-            print("[!] Error in Cex_IO Click: ", e)
+            logger.warning("[!] Error in Cex_IO Click: ", e)
     
     
 
