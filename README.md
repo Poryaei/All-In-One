@@ -53,7 +53,8 @@ Follow these steps to install and set up the automatic clicker on Telegram:
    - **Note:** 
      - You need to replace the value of `admin` with the numeric ID of the admin. You can get this ID by contacting [@chatIDrobot](https://t.me/chatIDrobot) on Telegram.
      - If you set any of the clickers (`tapswap_clicker`, `hamster_clicker`, `cexio_clicker`) to "off", the bot will not interact with that specific bot.
-     - The `max_days_for_return`, `max_charge_level`, `max_energy_level`, and `max_tap_level` settings are only for the TapSwap bot.
+     - The `max_days_for_return` setting is only for the Hamster bot. In the Hamster bot, you need to purchase cards that generate profit. The `max_days_for_return` parameter specifies the maximum number of days it should take for a card to return its profit.
+     - The `max_charge_level`, `max_energy_level`, and `max_tap_level` settings are only for the TapSwap bot.
 
 ## Running the Script
 
