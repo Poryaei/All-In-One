@@ -154,12 +154,14 @@ class HamsterCombat():
         for upgrade_to_buy in upgrades:
             if upgrade_name.lower() in upgrade_to_buy['name'].lower():
                 response = self.buy_upgrade(upgrade_to_buy['id'])
+                if 'error_code' in response:
+                    return False, response['error_message']
                 try:
                     for item in response['clickerUser']['upgrades']:
                         if item == upgrade_to_buy['id']:
                             return response['clickerUser']['upgrades'][item]['level']
                 except Exception as e:
-                    self.logger.warning("[!] Error in upgrade item: ", e)
+                    self.logger.warning("[!] Error in upgrade item: " + str(e))
                     return False
 
         
@@ -252,7 +254,7 @@ class HamsterCombat():
                 if balance < upgrade_to_buy['price']:
                     continue
                 
-                self.logger.debug('[~] Updating: ', upgrade_to_buy['id'], ' | x_day_return: ', upgrade_to_buy['x_day_return'])
+                self.logger.debug('[~] Updating: ' + upgrade_to_buy['id'] + ' | x_day_return: ' + str(upgrade_to_buy['x_day_return']))
                 
                 response = self.buy_upgrade(upgrade_to_buy['id'])
                 
