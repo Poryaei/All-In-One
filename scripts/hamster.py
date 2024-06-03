@@ -6,7 +6,8 @@ import random
 from scripts.logger import setup_custom_logger
 
 class HamsterCombat():
-    def __init__(self, url) -> None:
+    def __init__(self, url, max_days_for_return:int) -> None:
+        
         
         self.url     = url
         self.mining  = False
@@ -19,6 +20,7 @@ class HamsterCombat():
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
         }
         self.logger  = setup_custom_logger("Hamster")
+        self.max_days_for_return = max_days_for_return
         self.select_exchange()
         
     
@@ -197,7 +199,7 @@ class HamsterCombat():
         upgrades = response['upgradesForBuy']
         updates = []
         balance = self.balanceCoins()
-        for i in range(1, 30):
+        for i in range(1, self.max_days_for_return):
             sorted_upgrades = self.find_best_upgrades(upgrades, balance, i)
             if len(sorted_upgrades) != 0:
                 break
@@ -292,8 +294,8 @@ class HamsterCombat():
             availableTaps = taps['clickerUser']['availableTaps']
             balanceCoins  = taps['clickerUser']['balanceCoins']
             
-            self.logger.debug('[+] Available Taps: ', availableTaps)
-            self.logger.debug('[+] Balance Coins: ', round(balanceCoins, 3))
+            self.logger.debug('[+] Available Taps: ' + str(availableTaps))
+            self.logger.debug('[+] Balance Coins: ' + str(round(balanceCoins, 3)))
             
             time.sleep(random.randint(1, 2))
         
@@ -321,7 +323,7 @@ class HamsterCombat():
                     time.sleep(self.sleep_time)
                 
             except Exception as e:
-                print('[~~] Error: ', e)
+                self.logger.warning('[~~] Error: ' + str(e))
     
     def stop(self):
         self.mining = False
