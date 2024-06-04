@@ -3,7 +3,7 @@ import colorlog
 
 def setup_custom_logger(name):
     formatter = colorlog.ColoredFormatter(
-        "%(log_color)s%(levelname)-8s%(reset)s | %(log_color)s%(message)s",
+        f"%(log_color)s%(levelname)-8s | {name} | %(message)s",
         datefmt=None,
         reset=True,
         log_colors={
