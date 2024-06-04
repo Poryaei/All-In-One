@@ -8,11 +8,12 @@ from scripts.logger import setup_custom_logger
 class HamsterCombat():
     def __init__(self, url, max_days_for_return:int) -> None:
         
-        self.url     = url
-        self.mining  = False
-        self.logger  = setup_custom_logger("Hamster")
-        self.token   = self.authToken(self.url)
-        self.headers = {
+        self.url      = url
+        self.mining   = False
+        self.maxtries = 10
+        self.logger   = setup_custom_logger("Hamster")
+        self.token    = self.authToken(self.url)
+        self.headers  = {
             "accept": "/",
             "accept-language": "en-US,en;q=0.9,fa;q=0.8",
             "content-type": "application/json",
@@ -23,6 +24,8 @@ class HamsterCombat():
         self.max_days_for_return = max_days_for_return
         
         self.select_exchange()
+        
+        
         
     
     def wait_time(self, maxTaps:int, availableTaps:int, tapsRecoverPerSec:int):
@@ -35,7 +38,7 @@ class HamsterCombat():
             "fingerprint": {}
         }
         
-        maxtries = 5
+        maxtries = self.maxtries
         
         while maxtries >= 0:
             try:
@@ -43,47 +46,77 @@ class HamsterCombat():
                     'https://api.hamsterkombat.io/auth/auth-by-telegram-webapp', 
                     json=payload
                 ).json()
-
-                if 'authToken' in response:
-                    break
                 
+                return response['authToken']
             except Exception as e:
                 
                 self.logger.warning("[!] Error in fetching Auth Token. Retrying ")
                 
                 time.sleep(6)
             
+            finally:
                 
+                maxtries -= 1
         
-        return response['authToken']
-    
+        return False
+                
     def select_exchange(self, exchangeId:str="bingx"):
         
         payload = {
             "exchangeId":exchangeId
         }
         
-        try:
+        maxtries = self.maxtries
+        
+        while maxtries > 0:
             
-            response = requests.post(
-                'https://api.hamsterkombat.io/clicker/select-exchange', 
-                json=payload, 
-                headers=self.headers
-            ).json()
+            try:
+                
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/select-exchange', 
+                    json=payload, 
+                    headers=self.headers
+                ).json()
+                return response
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in select exchange")
+                
+                time.sleep(3)
+            
+            finally:
+                
+                maxtries -= 1
         
-        except Exception as e:
-            self.logger.warning("[!] Error in select exchange")
-        
-        return response
+        return False   
     
     def claim_daily_combo(self):
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/claim-daily-combo', 
-            headers=self.headers
-        ).json()
+        maxtries = self.maxtries
         
-        return response
+        while maxtries > 0:
+            
+            try:
+                
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/claim-daily-combo', 
+                    headers=self.headers
+                ).json()
+                
+                return response
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in claim the daily combo")
+                
+                time.sleep(3)
+            
+            finally:
+                
+                maxtries -= 1
+
+        return False
     
     def buy_boost(self, boostId:str, timex=time.time()*1000):
         
@@ -92,13 +125,31 @@ class HamsterCombat():
             "timestamp":timex
         }
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/buy-boost', 
-            json=payload, 
-            headers=self.headers
-        ).json()
+        maxtries = self.maxtries
         
-        return response
+        while maxtries > 0:
+            
+            try:
+                
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/buy-boost', 
+                    json=payload, 
+                    headers=self.headers
+                ).json()
+                
+                return response
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in purchasing Boost")
+                
+                time.sleep(3)
+            
+            finally:
+                
+                maxtries -= 1
+        
+        return False
     
     def buy_upgrade(self, upgradeId:str, timex=time.time()*1000):
         
@@ -107,32 +158,88 @@ class HamsterCombat():
             "timestamp":timex
         }
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/buy-upgrade', 
-            json=payload, 
-            headers=self.headers
-        ).json()
+        maxtries = self.maxtries
+        
+        while maxtries > 0:
+            
+            try:
                 
-        return response
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/buy-upgrade', 
+                    json=payload, 
+                    headers=self.headers
+                ).json()
+                        
+                return response
+            
+            except Exception as e:
+            
+                self.logger.warning("[!] Error in purchasing Upgrade")
+                
+                time.sleep(3)
+            
+            finally:
+                
+                maxtries -= 1
+        
+        return False
     
     def balanceCoins(self):
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/sync', 
-            headers=self.headers
-        ).json()
+        maxtries = self.maxtries
         
-        return response['clickerUser']['balanceCoins']
+        while maxtries > 0:
+            
+            try:
+            
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/sync', 
+                    headers=self.headers
+                ).json()
+                
+                return response['clickerUser']['balanceCoins']
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in retrieving account balance.")
+                
+                time.sleep(6)
+            
+            finally:
+                
+                maxtries -= 1
+        
+        return False
+    
     
     def info(self):
         """ id, totalCoins, balanceCoins, level, availableTaps, lastSyncUpdate, exchangeId, referralsCount, maxTaps, earnPerTap, earnPassivePerSec, earnPassivePerHour, lastPassiveEarn, tapsRecoverPerSec """
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/sync', 
-            headers=self.headers
-        ).json()
+        maxtries = self.maxtries
         
-        return response['clickerUser']
+        while maxtries > 0:
+            
+            try:
+            
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/sync', 
+                    headers=self.headers
+                ).json()
+                
+                return response['clickerUser']
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in retrieving account info.")
+                
+                time.sleep(6)
+            
+            finally:
+                
+                maxtries -= 1
+        
+        
+        return False
     
     def tap(self, count:int, availableTaps:int=5500, timex=time.time()*1000):
         
@@ -142,20 +249,57 @@ class HamsterCombat():
             "timestamp":timex
         }
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/tap', 
-            json=payload, 
-            headers=self.headers
-        ).json()
+        maxtries = self.maxtries
         
-        return response
+        while maxtries > 0:
+            
+            try:
+        
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/tap', 
+                    json=payload, 
+                    headers=self.headers
+                ).json()
+                
+                return response
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in submit taps")
+                
+                time.sleep(6)
+            
+            finally:
+                
+                maxtries -= 1
+        
+        return False
+            
     
     def check_boosts(self):
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/boosts-for-buy',
-            headers=self.headers
-        ).json()
+        maxtries = self.maxtries
+        
+        while maxtries > 0:
+            
+            try:
+        
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/boosts-for-buy',
+                    headers=self.headers
+                ).json()
+
+                break
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in checking boosts")
+                
+                time.sleep(6)
+            
+            finally:
+                
+                maxtries -= 1
         
         for boost in response['boostsForBuy']:
             if boost['id'] == 'BoostFullAvailableTaps' and boost['cooldownSeconds'] == 0 and boost['maxLevel'] - boost['level'] > 0:
@@ -166,10 +310,30 @@ class HamsterCombat():
     
     def upgrade_item(self, upgrade_name:str):
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/upgrades-for-buy', 
-            headers=self.headers
-        ).json()
+        maxtries = self.maxtries
+        
+        while maxtries > 0:
+            
+            try:
+        
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/upgrades-for-buy', 
+                    headers=self.headers
+                ).json()
+                
+                break
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in upgrade items")
+                
+                time.sleep(6)
+            
+            finally:
+                
+                maxtries -= 1
+        
+        
         
         upgrades = response['upgradesForBuy']
         
@@ -215,10 +379,30 @@ class HamsterCombat():
     
     def best_upgrades(self):
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/upgrades-for-buy', 
-            headers=self.headers
-        ).json()
+        maxtries = self.maxtries
+        
+        while maxtries > 0:
+            
+            try:
+        
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/upgrades-for-buy', 
+                    headers=self.headers
+                ).json()
+                
+                break
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in best upgrades")
+                
+                time.sleep(6)
+            
+            finally:
+                
+                maxtries -= 1
+        
+        
         
         upgrades = response['upgradesForBuy']
         updates = []
@@ -335,7 +519,7 @@ class HamsterCombat():
             try:
                 self.auto_tap()
             except Exception as e:
-                self.logger.warning('[!] Error:  ' + str(e))
+                self.logger.warning('[!] Error in start auto tap loop:  ' + str(e))
             
             try:
                 if time.time() - self.update_check > (3600)*3:
