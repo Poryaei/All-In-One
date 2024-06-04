@@ -8,9 +8,9 @@ from scripts.logger import setup_custom_logger
 class HamsterCombat():
     def __init__(self, url, max_days_for_return:int) -> None:
         
-        
         self.url     = url
         self.mining  = False
+        self.logger  = setup_custom_logger("Hamster")
         self.token   = self.authToken(self.url)
         self.headers = {
             "accept": "/",
@@ -19,8 +19,9 @@ class HamsterCombat():
             "Authorization": f"Bearer {self.token}",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
         }
-        self.logger  = setup_custom_logger("Hamster")
+        
         self.max_days_for_return = max_days_for_return
+        
         self.select_exchange()
         
     
@@ -28,15 +29,31 @@ class HamsterCombat():
         return round((maxTaps-availableTaps)/tapsRecoverPerSec)
     
     def authToken(self, url):
+        
         payload = {
             "initDataRaw": urllib.parse.unquote(url).split('tgWebAppData=')[1].split('&tgWebAppVersion')[0],
             "fingerprint": {}
         }
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/auth/auth-by-telegram-webapp', 
-            json=payload
-        ).json()
+        maxtries = 5
+        
+        while maxtries >= 0:
+            try:
+                response = requests.post(
+                    'https://api.hamsterkombat.io/auth/auth-by-telegram-webapp', 
+                    json=payload
+                ).json()
+
+                if 'authToken' in response:
+                    break
+                
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in fetching Auth Token. Retrying ")
+                
+                time.sleep(6)
+            
+                
         
         return response['authToken']
     
@@ -46,11 +63,16 @@ class HamsterCombat():
             "exchangeId":exchangeId
         }
         
-        response = requests.post(
-            'https://api.hamsterkombat.io/clicker/select-exchange', 
-            json=payload, 
-            headers=self.headers
-        ).json()
+        try:
+            
+            response = requests.post(
+                'https://api.hamsterkombat.io/clicker/select-exchange', 
+                json=payload, 
+                headers=self.headers
+            ).json()
+        
+        except Exception as e:
+            self.logger.warning("[!] Error in select exchange")
         
         return response
     
@@ -211,7 +233,7 @@ class HamsterCombat():
             
             if 'cooldownSeconds' in upgrade_to_buy and upgrade_to_buy['cooldownSeconds'] > 0:
                 
-                self.logger.debug('[~] Continue update for cool down:  ', upgrade_to_buy['id'])
+                self.logger.debug('[~] Continue update for cool down:  ' + upgrade_to_buy['id'])
                 
                 continue
             
@@ -228,7 +250,7 @@ class HamsterCombat():
                     if balance < upgrade_to_buy['price']:
                         continue
                     
-                    self.logger.debug('[~] Updating: ', upgrade_to_buy['id'], ' | x_day_return: ', upgrade_to_buy['x_day_return'])
+                    self.logger.debug('[~] Updating: ' + upgrade_to_buy['id'] + ' | x_day_return: ' + str(upgrade_to_buy['x_day_return']))
                     
                     response = self.buy_upgrade(upgrade_to_buy['id'])
                     
@@ -243,7 +265,7 @@ class HamsterCombat():
                         if balance < xprice:
                             break
                         
-                        self.logger.debug('[~] Updating: ', uid, ' | Need for: ', upgrade_to_buy['id'])
+                        self.logger.debug('[~] Updating: ' + uid + ' | Need for: ' + upgrade_to_buy['id'])
                         
                         response = self.buy_upgrade(uid)
                         
@@ -313,7 +335,7 @@ class HamsterCombat():
             try:
                 self.auto_tap()
             except Exception as e:
-                self.logger.warning('[!] Error:  ', e)
+                self.logger.warning('[!] Error:  ' + str(e))
             
             try:
                 if time.time() - self.update_check > (3600)*3:
@@ -325,7 +347,7 @@ class HamsterCombat():
                     time.sleep(self.sleep_time)
                 
             except Exception as e:
-                self.logger.warning('[~~] Error: ' + str(e))
+                self.logger.warning('[!] Error: ' + str(e))
     
     def stop(self):
         self.mining = False
