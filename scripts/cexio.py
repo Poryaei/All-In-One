@@ -157,14 +157,19 @@ class Cex_IO:
     
     def farmEndsAt(self):
         
-        data = self.getUserInfo()
-        date_string = data['data']['farmStartedAt']
-        date_obj = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
-        timestamp = date_obj.timestamp() + (60*60*4) + (60*5)
+        try:
+            
+            data        = self.getUserInfo()
+            date_string = data['data']['farmStartedAt']
+            date_obj    = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+            timestamp   = date_obj.timestamp() + (60*60*4) + (60*5)
+            
+            self._farms_end_time = timestamp
+            
+            return timestamp - time.time()
         
-        self._farms_end_time = timestamp
-        
-        return timestamp - time.time()
+        except:
+            return 0
     
     def farms_end_time(self):
         return self._farms_end_time - time.time()
@@ -182,7 +187,7 @@ class Cex_IO:
                 self.claimFarm()
                 self.startFarm()
         except Exception as e:
-            print("[!] Error in Cex_IO:check_for_clicks:  ", e)
+            self.logger.warning("[!] Error in Cex_IO:check_for_clicks:  " + str(e))
     
     def do_tasks(self):
         r = self.getUserInfo()
