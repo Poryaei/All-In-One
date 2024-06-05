@@ -110,10 +110,10 @@ class TapSwap:
             "referrer": ""
         }
         
-        if time.time() - self.update_token_time < 10*60:
+        if time.time() - self.update_token_time < 30*60:
             return
         
-        maxtries = 5
+        maxtries = 7
 
         while maxtries >= 0:
             try:
@@ -125,8 +125,12 @@ class TapSwap:
                 ).json()
                 
                 if 'wait_s' in response:
-                    self.logger.info(f'[+] Wating {response["wait_s"]} seconds to get auth token.')
-                    time.sleep(response["wait_s"]+random.randint(2, 13))
+                    sleep_time = response["wait_s"]
+                    if sleep_time > 70:
+                        maxtries += 1
+                        continue
+                    self.logger.info(f'[+] Wating {round(sleep_time/10)} seconds to get auth token.')
+                    time.sleep(sleep_time/10)
                     continue
                 
                 if 'chq' in response:
