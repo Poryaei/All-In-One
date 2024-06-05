@@ -81,7 +81,7 @@ class HamsterCombat():
             
             except Exception as e:
                 
-                self.logger.warning("[!] Error in select exchange")
+                self.logger.warning("[!] Error in select exchange:  " + str(e))
                 
                 time.sleep(3)
             
@@ -90,6 +90,76 @@ class HamsterCombat():
                 maxtries -= 1
         
         return False   
+    
+    def list_tasks(self):
+        
+        maxtries = self.maxtries
+        
+        while maxtries > 0:
+            
+            try:
+                
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/list-tasks', 
+                    headers=self.headers
+                ).json()
+                return response
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in list tasks")
+                
+                time.sleep(3)
+            
+            finally:
+                
+                maxtries -= 1
+        
+        return False   
+    
+    def check_task(self, taskId:str="streak_days"):
+        
+        payload = {
+            "taskId": taskId
+        }
+        
+        maxtries = self.maxtries
+        
+        while maxtries > 0:
+            
+            try:
+                
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/check-task', 
+                    headers=self.headers,
+                    json=payload
+                ).json()
+                return response
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in check tasks")
+                
+                time.sleep(3)
+            
+            finally:
+                
+                maxtries -= 1
+        
+        return False  
+    
+    def do_tasks(self):
+        
+        list_tasks = self.list_tasks()
+        
+        if list_tasks == False or not 'tasks' in list_tasks:
+            return
+        
+        for task in list_tasks['tasks']:
+            if task['id'] == 'streak_days' and task['isCompleted'] != True:
+                self.logger.debug('doing daily tasks')
+                self.check_task()
+                
     
     def claim_daily_combo(self):
         
@@ -116,6 +186,44 @@ class HamsterCombat():
                 
                 maxtries -= 1
 
+        return False
+    
+    def claim_daily_cipher(self, cipher:str):
+        
+        payload = {
+            "cipher": cipher
+        }
+        
+        maxtries = self.maxtries
+        
+        while maxtries > 0:
+            
+            try:
+                
+                response = requests.post(
+                    'https://api.hamsterkombat.io/clicker/claim-daily-cipher', 
+                    json=payload, 
+                    headers=self.headers
+                ).json()
+                
+                if 'error_message' in response:
+                    return False, response['error_message']
+                
+                if 'dailyCipher' in response and response['dailyCipher']['isClaimed'] == True:
+                    return True
+                
+                return response
+            
+            except Exception as e:
+                
+                self.logger.warning("[!] Error in claim daily cipher")
+                
+                time.sleep(3)
+            
+            finally:
+                
+                maxtries -= 1
+        
         return False
     
     def buy_boost(self, boostId:str, timex=time.time()*1000):
@@ -237,8 +345,7 @@ class HamsterCombat():
             finally:
                 
                 maxtries -= 1
-        
-        
+
         return False
     
     def tap(self, count:int, availableTaps:int=5500, timex=time.time()*1000):
@@ -525,10 +632,14 @@ class HamsterCombat():
                 if time.time() - self.update_check > (3600)*3:
                     self.best_upgrades()
                     self.update_check = time.time()
+                    self.do_tasks()
                 
                 if self.check_boosts() == False:
                     self.logger.debug(f'[~] Sleeping {self.sleep_time} Seconds ...')
-                    time.sleep(self.sleep_time)
+                    
+                    for _ in range(100):
+                        if self.mining:
+                            time.sleep(self.sleep_time/100)
                 
             except Exception as e:
                 self.logger.warning('[!] Error: ' + str(e))
