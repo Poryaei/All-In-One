@@ -2,474 +2,174 @@ import requests
 import urllib
 import time
 import random
+from datetime import datetime, timedelta
 
 from scripts.logger import setup_custom_logger
 
-class HamsterCombat():
-    def __init__(self, url, max_days_for_return:int) -> None:
-        
-        self.url      = url
-        self.mining   = False
+class HamsterCombat:
+    def __init__(self, url, max_days_for_return: int) -> None:
+        self.url = url
+        self.mining = False
         self.maxtries = 10
-        self.logger   = setup_custom_logger("Hamster")
-        self.token    = self.authToken(self.url)
-        self.headers  = {
+        self.logger = setup_custom_logger("Hamster")
+        self.token = None
+        self.token_expiration = None
+        self.max_days_for_return = max_days_for_return
+        self.sleep_time = 0
+
+        if not self.auth_token(self.url):
+            self.logger.error("Failed to get Auth Token. Stopping the class initialization.")
+            return
+        
+        self.headers = {
             "accept": "/",
             "accept-language": "en-US,en;q=0.9,fa;q=0.8",
             "content-type": "application/json",
             "Authorization": f"Bearer {self.token}",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
         }
-        
-        self.max_days_for_return = max_days_for_return
-        
         self.select_exchange()
-        
-        
-        
-    
-    def wait_time(self, maxTaps:int, availableTaps:int, tapsRecoverPerSec:int):
-        return round((maxTaps-availableTaps)/tapsRecoverPerSec)
-    
-    def authToken(self, url):
-        
+
+    def wait_time(self, max_taps: int, available_taps: int, taps_recover_per_sec: int):
+        return round((max_taps - available_taps) / taps_recover_per_sec)
+
+    def auth_token(self, url):
+        if self.token and self.token_expiration and datetime.now() < self.token_expiration:
+            self.logger.info("Using cached Auth Token.")
+            return True
+
         payload = {
             "initDataRaw": urllib.parse.unquote(url).split('tgWebAppData=')[1].split('&tgWebAppVersion')[0],
             "fingerprint": {}
         }
-        
-        maxtries = self.maxtries
-        
-        while maxtries >= 0:
+
+        for _ in range(self.maxtries):
             try:
                 response = requests.post(
-                    'https://api.hamsterkombat.io/auth/auth-by-telegram-webapp', 
+                    'https://api.hamsterkombat.io/auth/auth-by-telegram-webapp',
                     json=payload
                 ).json()
-                
-                return response['authToken']
+                self.token = response['authToken']
+                self.token_expiration = datetime.now() + timedelta(minutes=30)
+                self.logger.info("Auth Token fetched successfully.")
+                return True
             except Exception as e:
-                
-                self.logger.warning("[!] Error in fetching Auth Token. Retrying ")
-                
+                self.logger.warning(f"[!] Error in fetching Auth Token: {str(e)}. Retrying ")
                 time.sleep(6)
-            
-            finally:
-                
-                maxtries -= 1
         
         return False
-                
-    def select_exchange(self, exchangeId:str="bingx"):
-        
-        payload = {
-            "exchangeId":exchangeId
-        }
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
+
+    def post_request(self, endpoint, payload=None):
+        if not self.token or (self.token_expiration and datetime.now() >= self.token_expiration):
+            self.logger.info("Auth Token expired or invalid. Refreshing token...")
+            if not self.auth_token(self.url):
+                self.logger.error("Failed to refresh Auth Token. Stopping request.")
+                return False
+            self.headers["Authorization"] = f"Bearer {self.token}"
+
+        for _ in range(self.maxtries):
             try:
-                
                 response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/select-exchange', 
-                    json=payload, 
+                    f'https://api.hamsterkombat.io{endpoint}',
+                    json=payload,
                     headers=self.headers
                 ).json()
                 return response
-            
             except Exception as e:
-                
-                self.logger.warning("[!] Error in select exchange:  " + str(e))
-                
+                self.logger.warning(f"[!] Error in {endpoint}: {str(e)}")
                 time.sleep(3)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        return False   
-    
+        return False
+
+    def select_exchange(self, exchange_id: str = "bingx"):
+        payload = {"exchangeId": exchange_id}
+        return self.post_request('/clicker/select-exchange', payload)
+
     def list_tasks(self):
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-                
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/list-tasks', 
-                    headers=self.headers
-                ).json()
-                return response
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in list tasks")
-                
-                time.sleep(3)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        return False   
-    
-    def check_task(self, taskId:str="streak_days"):
-        
-        payload = {
-            "taskId": taskId
-        }
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-                
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/check-task', 
-                    headers=self.headers,
-                    json=payload
-                ).json()
-                return response
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in check tasks")
-                
-                time.sleep(3)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        return False  
-    
+        return self.post_request('/clicker/list-tasks')
+
+    def check_task(self, task_id: str = "streak_days"):
+        payload = {"taskId": task_id}
+        return self.post_request('/clicker/check-task', payload)
+
     def do_tasks(self):
-        
         list_tasks = self.list_tasks()
-        
-        if list_tasks == False or not 'tasks' in list_tasks:
+        if not list_tasks or 'tasks' not in list_tasks:
             return
-        
         for task in list_tasks['tasks']:
-            if task['id'] == 'streak_days' and task['isCompleted'] != True:
-                self.logger.debug('doing daily tasks')
+            if task['id'] == 'streak_days' and not task['isCompleted']:
+                self.logger.debug('Doing daily tasks')
                 self.check_task()
-                
-    
+
     def claim_daily_combo(self):
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-                
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/claim-daily-combo', 
-                    headers=self.headers
-                ).json()
-                
-                return response
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in claim the daily combo")
-                
-                time.sleep(3)
-            
-            finally:
-                
-                maxtries -= 1
+        return self.post_request('/clicker/claim-daily-combo')
 
+    def claim_daily_cipher(self, cipher: str):
+        payload = {"cipher": cipher}
+        response = self.post_request('/clicker/claim-daily-cipher', payload)
+        if 'error_message' in response:
+            return False, response['error_message']
+        if 'dailyCipher' in response and response['dailyCipher']['isClaimed']:
+            return True
+        return response
+
+    def buy_boost(self, boost_id: str, timex=time.time() * 1000):
+        payload = {"boostId": boost_id, "timestamp": timex}
+        return self.post_request('/clicker/buy-boost', payload)
+
+    def buy_upgrade(self, upgrade_id: str, timex=time.time() * 1000):
+        payload = {"upgradeId": upgrade_id, "timestamp": timex}
+        return self.post_request('/clicker/buy-upgrade', payload)
+
+    def balance_coins(self):
+        response = self.post_request('/clicker/sync')
+        if response:
+            return response['clickerUser']['balanceCoins']
         return False
-    
-    def claim_daily_cipher(self, cipher:str):
-        
-        payload = {
-            "cipher": cipher
-        }
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-                
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/claim-daily-cipher', 
-                    json=payload, 
-                    headers=self.headers
-                ).json()
-                
-                if 'error_message' in response:
-                    return False, response['error_message']
-                
-                if 'dailyCipher' in response and response['dailyCipher']['isClaimed'] == True:
-                    return True
-                
-                return response
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in claim daily cipher")
-                
-                time.sleep(3)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        return False
-    
-    def buy_boost(self, boostId:str, timex=time.time()*1000):
-        
-        payload = {
-            "boostId":boostId,
-            "timestamp":timex
-        }
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-                
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/buy-boost', 
-                    json=payload, 
-                    headers=self.headers
-                ).json()
-                
-                return response
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in purchasing Boost")
-                
-                time.sleep(3)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        return False
-    
-    def buy_upgrade(self, upgradeId:str, timex=time.time()*1000):
-        
-        payload = {
-            "upgradeId":upgradeId,
-            "timestamp":timex
-        }
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-                
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/buy-upgrade', 
-                    json=payload, 
-                    headers=self.headers
-                ).json()
-                        
-                return response
-            
-            except Exception as e:
-            
-                self.logger.warning("[!] Error in purchasing Upgrade")
-                
-                time.sleep(3)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        return False
-    
-    def balanceCoins(self):
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-            
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/sync', 
-                    headers=self.headers
-                ).json()
-                
-                return response['clickerUser']['balanceCoins']
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in retrieving account balance.")
-                
-                time.sleep(6)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        return False
-    
-    
+
     def info(self):
-        """ id, totalCoins, balanceCoins, level, availableTaps, lastSyncUpdate, exchangeId, referralsCount, maxTaps, earnPerTap, earnPassivePerSec, earnPassivePerHour, lastPassiveEarn, tapsRecoverPerSec """
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-            
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/sync', 
-                    headers=self.headers
-                ).json()
-                
-                return response['clickerUser']
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in retrieving account info.")
-                
-                time.sleep(6)
-            
-            finally:
-                
-                maxtries -= 1
+        response = self.post_request('/clicker/sync')
+        if response:
+            return response['clickerUser']
+        return False
 
-        return False
-    
-    def tap(self, count:int, availableTaps:int=5500, timex=time.time()*1000):
-        
-        payload = {
-            "count":count,
-            "availableTaps":availableTaps,
-            "timestamp":timex
-        }
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-        
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/tap', 
-                    json=payload, 
-                    headers=self.headers
-                ).json()
-                
-                return response
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in submit taps")
-                
-                time.sleep(6)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        return False
-            
+    def tap(self, count: int, available_taps: int = 5500, timex=time.time() * 1000):
+        payload = {"count": count, "availableTaps": available_taps, "timestamp": timex}
+        return self.post_request('/clicker/tap', payload)
     
     def check_boosts(self):
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-        
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/boosts-for-buy',
-                    headers=self.headers
-                ).json()
-
-                break
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in checking boosts")
-                
-                time.sleep(6)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        for boost in response['boostsForBuy']:
-            if boost['id'] == 'BoostFullAvailableTaps' and boost['cooldownSeconds'] == 0 and boost['maxLevel'] - boost['level'] > 0:
-                response = self.buy_boost('BoostFullAvailableTaps')
-                return True
-            
+        response = self.post_request('/clicker/boosts-for-buy')
+        if response:
+            for boost in response['boostsForBuy']:
+                if boost['id'] == 'BoostFullAvailableTaps' and boost['cooldownSeconds'] == 0 and boost['maxLevel'] - boost['level'] > 0:
+                    self.buy_boost('BoostFullAvailableTaps')
+                    return True
         return False
-    
-    def upgrade_item(self, upgrade_name:str):
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
-            
-            try:
-        
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/upgrades-for-buy', 
-                    headers=self.headers
-                ).json()
-                
-                break
-            
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in upgrade items")
-                
-                time.sleep(6)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        
-        
-        upgrades = response['upgradesForBuy']
-        
-        for upgrade_to_buy in upgrades:
-            if upgrade_name.lower() in upgrade_to_buy['name'].lower():
-                response = self.buy_upgrade(upgrade_to_buy['id'])
-                if 'error_code' in response:
-                    return False, response['error_message']
-                try:
-                    for item in response['clickerUser']['upgrades']:
-                        if item == upgrade_to_buy['id']:
-                            return response['clickerUser']['upgrades'][item]['level']
-                except Exception as e:
-                    self.logger.warning("[!] Error in upgrade item: " + str(e))
-                    return False
 
-        
+    def upgrade_item(self, upgrade_name: str):
+        response = self.post_request('/clicker/upgrades-for-buy')
+        if response:
+            upgrades = response['upgradesForBuy']
+            for upgrade_to_buy in upgrades:
+                if upgrade_name.lower() in upgrade_to_buy['name'].lower():
+                    upgrade_response = self.buy_upgrade(upgrade_to_buy['id'])
+                    if 'error_code' in upgrade_response:
+                        return False, upgrade_response['error_message']
+                    try:
+                        for item in upgrade_response['clickerUser']['upgrades']:
+                            if item == upgrade_to_buy['id']:
+                                return upgrade_response['clickerUser']['upgrades'][item]['level']
+                    except KeyError:
+                        continue
         return False
-        
     
     def find_upgrade_level(self, upgrades, upgrade_id):
-        
         for u in upgrades:
             if u['id'] == upgrade_id:
                 return u['level'] - 1, u['price']
         return False
     
-    def find_best_upgrades(self, upgrades, current_balance, time_horizon=2):
-        
+    
+    def find_best_upgrades(self, upgrades, time_horizon=2):
         best_upgrades = []
         for upgrade in upgrades:
             if upgrade['isAvailable'] and not upgrade['isExpired']:
@@ -484,110 +184,54 @@ class HamsterCombat():
         best_upgrades.sort(key=lambda upgrade: upgrade['x_day_return'], reverse=True)
         return best_upgrades[:3]
     
-    def best_upgrades(self):
-        
-        maxtries = self.maxtries
-        
-        while maxtries > 0:
+    def buy_bests(self):
+        response = self.post_request('/clicker/upgrades-for-buy')
+        if response:
+            upgrades = response['upgradesForBuy']
+            updates = []
+            balance = self.balance_coins()
+            for i in range(1, self.max_days_for_return):
+                sorted_upgrades = self.find_best_upgrades(upgrades, i)
+                if len(sorted_upgrades) != 0:
+                    break
             
-            try:
-        
-                response = requests.post(
-                    'https://api.hamsterkombat.io/clicker/upgrades-for-buy', 
-                    headers=self.headers
-                ).json()
-                
-                break
+            for upgrade_to_buy in sorted_upgrades:
+                if 'cooldownSeconds' in upgrade_to_buy and upgrade_to_buy['cooldownSeconds'] > 0:
+                    self.logger.debug('[~] Continue update for cool down:  ' + upgrade_to_buy['id'])
+                    continue
             
-            except Exception as e:
-                
-                self.logger.warning("[!] Error in best upgrades")
-                
-                time.sleep(6)
-            
-            finally:
-                
-                maxtries -= 1
-        
-        
-        
-        upgrades = response['upgradesForBuy']
-        updates = []
-        balance = self.balanceCoins()
-        for i in range(1, self.max_days_for_return):
-            sorted_upgrades = self.find_best_upgrades(upgrades, balance, i)
-            if len(sorted_upgrades) != 0:
-                break
-        
-        
-        for upgrade_to_buy in sorted_upgrades:
-            
-            if 'cooldownSeconds' in upgrade_to_buy and upgrade_to_buy['cooldownSeconds'] > 0:
-                
-                self.logger.debug('[~] Continue update for cool down:  ' + upgrade_to_buy['id'])
-                
-                continue
-            
-            if upgrade_to_buy['condition'] != None and upgrade_to_buy['condition']['_type'] == 'ByUpgrade':
-                
-                uid = upgrade_to_buy['condition']['upgradeId']
-                
-                ulevel = upgrade_to_buy['condition']['level']
-                
-                xlevel, xprice = self.find_upgrade_level(upgrades, uid)
-                
-                if xlevel > ulevel:
-                    
+                if upgrade_to_buy['condition'] != None and upgrade_to_buy['condition']['_type'] == 'ByUpgrade':
+                    uid = upgrade_to_buy['condition']['upgradeId']
+                    ulevel = upgrade_to_buy['condition']['level']
+                    xlevel, xprice = self.find_upgrade_level(upgrades, uid)
+                    if xlevel > ulevel:
+                        if balance < upgrade_to_buy['price']:
+                            continue
+                        self.logger.debug('[~] Updating: ' + upgrade_to_buy['id'] + ' | x_day_return: ' + str(upgrade_to_buy['x_day_return']))
+                        response = self.buy_upgrade(upgrade_to_buy['id'])
+                        updates.append(upgrade_to_buy)
+                        balance -= upgrade_to_buy['price']
+                    else:
+                        for i in range((ulevel-xlevel)+1):
+                            if balance < xprice:
+                                break
+                            self.logger.debug('[~] Updating: ' + uid + ' | Need for: ' + upgrade_to_buy['id'])
+                            response = self.buy_upgrade(uid)
+                            balance -= xprice
+                else:
                     if balance < upgrade_to_buy['price']:
                         continue
-                    
                     self.logger.debug('[~] Updating: ' + upgrade_to_buy['id'] + ' | x_day_return: ' + str(upgrade_to_buy['x_day_return']))
-                    
                     response = self.buy_upgrade(upgrade_to_buy['id'])
-                    
                     updates.append(upgrade_to_buy)
-                    
                     balance -= upgrade_to_buy['price']
                     
-                else:
-                    
-                    for i in range((ulevel-xlevel)+1):
-                        
-                        if balance < xprice:
-                            break
-                        
-                        self.logger.debug('[~] Updating: ' + uid + ' | Need for: ' + upgrade_to_buy['id'])
-                        
-                        response = self.buy_upgrade(uid)
-                        
-                        balance -= xprice
-                        
-            else:
-                
-                if balance < upgrade_to_buy['price']:
-                    continue
-                
-                self.logger.debug('[~] Updating: ' + upgrade_to_buy['id'] + ' | x_day_return: ' + str(upgrade_to_buy['x_day_return']))
-                
-                response = self.buy_upgrade(upgrade_to_buy['id'])
-                
-                updates.append(upgrade_to_buy)
-                
-                balance -= upgrade_to_buy['price']
-                
-        self.logger.debug(f'[~] Updated:  {len(updates)}')
-        
-        return updates
+            self.logger.debug(f'[~] Updated:  {len(updates)}')
+            return updates
     
-    def update_all(self):
-        while len(self.best_upgrades()) > 0:
-            pass
-        return
-    
-    def auto_tap(self):
+    def tap_all(self):
         
         taps = self.tap(1)
-        
         maxTaps           = taps['clickerUser']['maxTaps']
         availableTaps     = taps['clickerUser']['availableTaps']
         tapsRecoverPerSec = taps['clickerUser']['tapsRecoverPerSec']
@@ -615,35 +259,5 @@ class HamsterCombat():
             time.sleep(random.randint(1, 2))
         
         self.sleep_time = self.wait_time(maxTaps, availableTaps, tapsRecoverPerSec)
-    
-    def start(self):
         
-        self.mining       = True
-        self.start_time   = time.time()
-        self.update_check = 0
-        
-        while self.mining:
-            try:
-                self.auto_tap()
-            except Exception as e:
-                self.logger.warning('[!] Error in start auto tap loop:  ' + str(e))
-            
-            try:
-                if time.time() - self.update_check > (3600)*3:
-                    self.best_upgrades()
-                    self.update_check = time.time()
-                    self.do_tasks()
-                
-                if self.check_boosts() == False:
-                    self.logger.debug(f'[~] Sleeping {self.sleep_time} Seconds ...')
-                    
-                    for _ in range(100):
-                        if self.mining:
-                            time.sleep(self.sleep_time/100)
-                
-            except Exception as e:
-                self.logger.warning('[!] Error: ' + str(e))
-    
-    def stop(self):
-        self.mining = False
-
+        return self.sleep_time + time.time() + (60*random.randint(1, 12))
