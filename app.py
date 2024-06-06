@@ -1,14 +1,17 @@
 import asyncio
-import os, json, time, aiocron, psutil
+import os, sys, json, time, aiocron, psutil
 
-from threading import Thread
+from threading       import Thread
 from scripts.tapswap import TapSwap
 from scripts.hamster import HamsterCombat
-from scripts.cexio import Cex_IO
-from scripts.logger import setup_custom_logger
+from scripts.cexio   import Cex_IO
+from scripts.logger  import setup_custom_logger
+from scripts.cache_data import SimpleCache
 
 from telethon.sync import TelegramClient
 from telethon.sync import functions, events
+from telethon.tl.types import InputBotAppShortName
+
 
 
 
@@ -25,10 +28,12 @@ with open('config.json') as f:
     max_charge_level = data['max_charge_level']
     max_energy_level = data['max_energy_level']
     max_days_for_return = data['max_days_for_return']
+    
     cexio_clicker    = data['cexio_clicker']
     tapswap_clicker  = data['tapswap_clicker']
     hamster_clicker  = data['hamster_clicker']
-    
+        
+    cexio_ref_code   = data['cexio_ref_code']
     
     
 
@@ -40,7 +45,7 @@ db = {
     'click': 'on'
 }
 
-VERSION    = "1.0.0"
+VERSION    = "1.1.0"
 START_TIME = time.time()
 
 client = TelegramClient(
@@ -54,18 +59,38 @@ client.start()
 
 
 client_id = client.get_me(True).user_id
+
 logger.info("Client is Ready!")
-client.send_message('tapswap_bot', f'/start r_{admin}')
+
+cache_db = SimpleCache(client_id)
+
+if not cache_db.exists('start_bots'):
+    client.send_message('tapswap_bot', f'/start r_{admin}')
+    client.send_message('hamster_kombat_bot', f'/start kentId{admin}')
+    client.send_message('cexio_tap_bot', f'/start {cexio_ref_code}')
+    
+    cache_db.set('start_bots', 3)
 
 
-def getUrlsync(peer:str, bot:str, url:str, platform:str="ios"):
+def getUrlsync(peer:str, bot:str, url:str, platform:str="ios", start_param:str=""):
     return client(
         functions.messages.RequestWebViewRequest(
             peer          = peer,
             bot           = bot,
             platform      = platform,
             url           = url,
-            from_bot_menu = False
+            from_bot_menu = False,
+            start_param = start_param
+        )
+    )
+
+def getAppUrl(bot:str, platform:str="ios", start_param:str="", short_name:str="start"):
+    return client(
+        functions.messages.RequestAppWebViewRequest(
+            peer          = "me",
+            app           = InputBotAppShortName(bot_id=client.get_input_entity(bot), short_name=short_name),
+            platform      = platform,
+            start_param   = start_param
         )
     )
 
@@ -138,6 +163,10 @@ async def answer(event):
     elif text.startswith('/buy '):
         item = text.split('/buy ')[1]
         r = hamster_client.upgrade_item(item)
+        if type(r) == tuple:
+            await _sendMessage(f'🛠️🚫 An error occurred while requesting an upgrade/purchasing an item.\n➖  `{r[1]}`')
+            return 
+        
         if r != False:
             await _sendMessage(f'🚀 Your request for an upgrade/purchase of the item has been sent.\n\n🌟New item level: {r}')
         else:
@@ -147,20 +176,49 @@ async def answer(event):
         r = hamster_client.claim_daily_combo()
         await _sendMessage('🚀 Your request has been sent.')
     
+    elif text.startswith('/cipher '):
+        cipher = text.split('/cipher ')[1]
+        r = hamster_client.claim_daily_cipher(cipher)
+        
+        if type(r) == tuple:
+            await _sendMessage(f'🛠️🚫 The operation was not successful... \n➖  `{r[1]}`')
+            return 
+        
+        if r == True:
+            await _sendMessage('🏆 The cipher prize has been successfully obtained!')
+            
+        else:
+            await _sendMessage('🛠️🚫 The operation was not successful... ')
+    
     elif text == '/balance':
         _hours2, _minutes2 = convert_uptime(nextMineTime - time.time())
-        await _sendMessage(f'🟣 TapSwap: `{tapswap_client.shares()}`\n🐹 Hamster: `{round(hamster_client.balanceCoins())}`\n❣️ Cex Io: `{cex_io_client.balance()}`\n💡 Next Tap in: `{_hours2} hours and {_minutes2} minutes`')
+        await _sendMessage(f'🟣 TapSwap: `{tapswap_client.shares()}`\n🐹 Hamster: `{round(hamster_client.balance_coins())}`\n❣️ Cex Io: `{cex_io_client.balance()}`\n💡 Next Tap in: `{_hours2} hours and {_minutes2} minutes`')
     
     elif text == '/url':
-        await _sendMessage(f'💜 TapSwap: `{tapswap_url}`\n\n🐹 Hamster: `{hamster_url}`\n\n❣️ Cex: `{cex_io_url}`')
+        try:
+            await _sendMessage(f'💜 TapSwap: `{tapswap_url}`\n\n🐹 Hamster: `{hamster_url}`\n\n❣️ Cex: `{cex_io_url}`')
+        except:
+            # Large Message
+            await _sendMessage(f'💜 TapSwap: `{tapswap_url}`\n\n🐹 Hamster: `{hamster_url}`')
+            await _sendMessage(f'❣️ Cex: `{cex_io_url}`')
+            
     
     elif text == '/stats':
-        stats = tapswap_client.tap_stats()
+        
+        stats        = tapswap_client.tap_stats()
+        info_hamster = hamster_client.info()
+        
         total_share_balance = stats['players']['earned'] - stats['players']['spent'] + stats['players']['reward']
         await _sendMessage(f"""`⚡️ TAPSWAP ⚡️`\n\n💡 Total Share Balance: `{convert_big_number(total_share_balance)}`
 👆🏻 Total Touches: `{convert_big_number(stats['players']['taps'])}`
 💀 Total Players: `{convert_big_number(stats['accounts']['total'])}`
-☠️ Online Players: `{convert_big_number(stats['accounts']['online'])}`""")
+☠️ Online Players: `{convert_big_number(stats['accounts']['online'])}`
+
+
+🐹 `HAMSTER` 🐹
+
+💰 Profit per hour: `{convert_big_number(info_hamster['earnPassivePerHour'])}`
+👆🏻 Earn per tap: `{info_hamster['earnPerTap']}`""")
     
     elif text == '/help':
         su = get_server_usage()
@@ -196,12 +254,14 @@ Just a powerful clicker and non-stop bread 🚀
 🟣 `/balance` - Show balance
 🟣 `/stop` - Stop the robot
 🟣 `/url` - WebApp Url
+🟣 `/stats` - TapSwap ~ HamSter stats
 
 
 🐹 Special Hamster Commands:
 
 🟠 `/buy item` - Purchase an item/card ( `/buy Fan tokens` )
 🟠 `/claim_daily_combo` - Claim daily combo ( `You need to purchase items by commands` )
+🟠 `/cipher CIPHER` - Claim daily cipher ( `/cipher BTC` )
 
 
 
@@ -217,44 +277,56 @@ Coded By: @uPaSKaL | GitHub: [Poryaei](https://github.com/Poryaei)
         await _sendMessage('👋')
         hamster_client.stop()
         await client.disconnect()
+        print("Sys Exit")
+        sys.exit()
 
 
 balance      = 0
 mining       = False
 nextMineTime = 0
 
-tapswap_url  = getUrlsync(
-    'tapswap_bot',
-    'tapswap_bot',
-    'https://app.tapswap.ai/'
-).url
+if not cache_db.exists('tapswap_url'):
+    tapswap_url  = getUrlsync(
+        'tapswap_bot',
+        'tapswap_bot',
+        'https://app.tapswap.ai/'
+    ).url
+    
+    cache_db.set('tapswap_url', tapswap_url)
+    time.sleep(6)
+    
 
-hamster_url  = getUrlsync(
-    'hamster_kombat_bot',
-    'hamster_kombat_bot',
-    'https://hamsterkombat.io/'
-).url
+if not cache_db.exists('hamster_url'):
+    hamster_url  = getAppUrl(
+        'hamster_kombat_bot',
+        start_param=f"kentId{admin}"
+    ).url
+    
+    cache_db.set('hamster_url', hamster_url)
+    time.sleep(6)
 
-cex_io_url  = getUrlsync(
-    'cexio_tap_bot',
-    'cexio_tap_bot',
-    'https://cexp.cex.io/'
-).url
+if not cache_db.exists('cex_io_url'):
+    cex_io_url  = getUrlsync(
+        'cexio_tap_bot',
+        'cexio_tap_bot',
+        'https://cexp.cex.io/'
+    ).url
+    
+    cache_db.set('cex_io_url', cex_io_url)
+    time.sleep(6)
+
+tapswap_url = cache_db.get('tapswap_url')
+hamster_url = cache_db.get('hamster_url')
+cex_io_url  = cache_db.get('cex_io_url')
 
 tapswap_client = TapSwap(tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level)
 hamster_client = HamsterCombat(hamster_url, max_days_for_return)
-cex_io_client  = Cex_IO(cex_io_url, client_id)
+cex_io_client  = Cex_IO(cex_io_url, client_id)    
 
 if cexio_clicker == "on":
     Thread(target=cex_io_client.do_tasks).start()
 
-if hamster_clicker == "on":
-    Thread(target=hamster_client.start).start()
-
-
-print(tapswap_url)
-
-
+hamster_client.do_tasks()
 
 @aiocron.crontab('*/1 * * * *')
 async def sendTaps():
@@ -267,7 +339,7 @@ async def sendTaps():
     if tapswap_clicker == "on":
         
         if nextMineTime - time.time() > 1 or mining:
-            logger.debug(f'[+] Waiting {round(nextMineTime - time.time())} seconds for next tap.')
+            logger.info(f'[+] Waiting {round(nextMineTime - time.time())} seconds for next tap.')
             return
         
         mining = True
@@ -276,11 +348,11 @@ async def sendTaps():
             Thread(target=tapswap_client.click_all).start()
             time_to_recharge = tapswap_client.time_to_recharge()
             nextMineTime = time.time()+time_to_recharge
-            logger.debug(f"[~] Sleeping: {time_to_recharge} seconds ...")
+            logger.info(f"[~] Sleeping: {time_to_recharge} seconds ...")
         except Exception as e:
             time_to_recharge = 0
             
-            logger.warning("[!] Error in click all: ", e)
+            logger.warning("[!] Error in click all: " + str(e))
         
         mining = False
     
@@ -289,9 +361,21 @@ async def sendTaps():
             if cex_io_client.farms_end_time() < 1:
                 cex_io_client.check_for_clicks()
         except Exception as e:        
-            logger.warning("[!] Error in Cex_IO Click: ", e)
+            logger.warning("[!] Error in Cex_IO Click: " + str(e))
     
-    
+    if hamster_clicker == "on":
+        try:
+            if time.time() > hamster_client.sleep_time:
+                hamster_client.tap_all()
+            # Sync
+            hamster_client.balance_coins()
+            Thread(target=hamster_client.buy_bests).start()
+        except Exception as e:        
+            logger.warning("[!] Error in Hamster Click: " + str(e))
+
+@aiocron.crontab('0 */12 * * *')
+async def do_tasks():
+    hamster_client.do_tasks()
 
 
 @client.on(events.NewMessage())
