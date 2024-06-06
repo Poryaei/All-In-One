@@ -55,6 +55,7 @@ Follow these steps to install and set up the automatic clicker on Telegram:
      - If you set any of the clickers (`tapswap_clicker`, `hamster_clicker`, `cexio_clicker`) to "off", the bot will not interact with that specific bot.
      - The `max_days_for_return` setting is for the Hamster bot. It specifies the maximum number of days it should take for a card to return its profit.
      - The `max_charge_level`, `max_energy_level`, and `max_tap_level` settings are for the TapSwap bot.
+     - Replace `cexio_ref_code` with your own referral code.
 
 ## Running the Script
 
