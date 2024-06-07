@@ -1,4 +1,4 @@
-name: Release 3X-UI for Docker
+name: Release autoclicker for Docker
 on:
   push:
     tags:
