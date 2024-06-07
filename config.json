@@ -6,9 +6,10 @@
     "hamster_clicker": "on",
     "cexio_clicker": "on",
     "auto_upgrade": true,
-    "max_days_for_return": 30,
+    "max_days_for_return": 10,
     "max_charge_level": 5,
     "max_energy_level": 10,
     "max_tap_level": 10,
-    "cexio_ref_code": "1716310450941700"
+    "cexio_ref_code": "1716965343289920",
+    "version": "1.1.1"
 }
