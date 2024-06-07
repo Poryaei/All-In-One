@@ -11,7 +11,7 @@ with open('config.json') as f:
     api_id = getenv_json_config('api_id')
     api_hash = getenv_json_config('api_hash')
     sessionString = getenv_json_config('sessionString')
-    admin = getenv_json_config('admin')
+    admin = int(getenv_json_config('admin'))
     version = getenv_json_config('version')
     auto_upgrade = getenv_json_config('auto_upgrade')
     max_tap_level = getenv_json_config('max_tap_level')
