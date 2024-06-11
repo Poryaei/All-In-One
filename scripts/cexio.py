@@ -6,9 +6,9 @@ from datetime import datetime
 from scripts.logger import setup_custom_logger
 
 class Cex_IO:
-    def __init__(self, url, admin:int):
+    def __init__(self, url, admin:int=1):
         
-        self.logger  = setup_custom_logger("CexIO")
+        self.logger  = setup_custom_logger(f"CexIO | User: {admin}")
         
         self.headers = {
             "accept": "/",
@@ -25,30 +25,39 @@ class Cex_IO:
         self.authData        = urllib.parse.unquote(url).split('tgWebAppData=')[1].split('&tgWebAppVersion')[0]
         self._farms_end_time = 0
 
+    def request_to_backend(self, endpoint, payload, max_retries=3):
+        for attempt in range(max_retries):
+            try:
+                r = self.session.post(endpoint, json=payload).json()
+                if r.get('status') == 'ok':
+                    return r
+                else:
+                    self.logger.error(f"Error in response: {r}")
+                    return r
+            except requests.RequestException as e:
+                self.logger.error(f"Request error: {e}")
+            except ValueError as e:
+                self.logger.error(f"JSON decoding error: {e}")
+            time.sleep(2)  # Wait before retrying
+        return None
+
     def getUserInfo(self):
-        
         payload = {
             "authData": self.authData,
             "data":{},
             "devAuthData": self.admin,
             "platform": "ios"
         }
-        
-        r = self.session.post(
-            'https://cexp.cex.io/api/getUserInfo', 
-            json=payload
-        ).json()
-        
-        return r
+        endpoint = 'https://cexp.cex.io/api/getUserInfo'
+        return self.request_to_backend(endpoint, payload)
     
     def balance(self):
-        
         r = self.getUserInfo()
-        
-        return r['data']['balance']
+        if r:
+            return r['data']['balance']
+        return None
     
     def startTask(self, taskId:str):
-        
         payload = {
             "authData": self.authData,
             "data":{
@@ -56,19 +65,15 @@ class Cex_IO:
             },
             "devAuthData": self.admin,
         }
+        endpoint = 'https://cexp.cex.io/api/startTask'
+        r = self.request_to_backend(endpoint, payload)
         
-        r = self.session.post(
-            'https://cexp.cex.io/api/startTask', 
-            json=payload
-        ).json()
-        
-        if r['status'] == 'ok':
+        if r and r.get('status') == 'ok':
             self.logger.debug(f'[+] Starting Task: {taskId}')
         
         return r
     
     def checkTask(self, taskId:str):
-        
         payload = {
             "authData": self.authData,
             "data":{
@@ -76,20 +81,16 @@ class Cex_IO:
             },
             "devAuthData": self.admin,
         }
+        endpoint = 'https://cexp.cex.io/api/checkTask'
+        r = self.request_to_backend(endpoint, payload)
         
-        r = self.session.post(
-            'https://cexp.cex.io/api/checkTask', 
-            json=payload
-        ).json()
-        
-        if r['status'] == 'ok' or ('reason' in r['data'] and r['data']['reason'] == 'Task is not at ReadyToCheck state'):
+        if r and (r['status'] == 'ok' or ('reason' in r['data'] and r['data']['reason'] == 'Task is not at ReadyToCheck state')):
             self.logger.debug(f'[+] Claim Task Reward: {taskId}')
             self.claimTask(taskId)
         
         return r
     
     def claimTask(self, taskId:str):
-        
         payload = {
             "authData": self.authData,
             "data":{
@@ -97,18 +98,13 @@ class Cex_IO:
             },
             "devAuthData": self.admin,
         }
+        endpoint = 'https://cexp.cex.io/api/claimTask'
+        r = self.request_to_backend(endpoint, payload)
         
-        r = self.session.post(
-            'https://cexp.cex.io/api/claimTask', 
-            json=payload
-        ).json()
-        
-        if r['status'] == 'ok' and 'claimedBalance' in r['data']:
+        if r and r.get('status') == 'ok' and 'claimedBalance' in r['data']:
             self.logger.debug(f'[+] Task Reward: {r["data"]["claimedBalance"]}')
         
         return r
-        
-        
 
     def claimTaps(self, taps=200):
         payload = {
@@ -118,13 +114,8 @@ class Cex_IO:
             },
             "devAuthData": self.admin,
         }
-        
-        r = self.session.post(
-            'https://cexp.cex.io/api/claimTaps', 
-            json=payload
-        ).json()
-        
-        return r
+        endpoint = 'https://cexp.cex.io/api/claimTaps'
+        return self.request_to_backend(endpoint, payload)
     
     def startFarm(self):
         payload = {
@@ -132,74 +123,63 @@ class Cex_IO:
             "data":{},
             "devAuthData": self.admin,
         }
-        
-        r = self.session.post(
-            'https://cexp.cex.io/api/startFarm', 
-            json=payload
-        ).json()
-        
-        return r
+        endpoint = 'https://cexp.cex.io/api/startFarm'
+        return self.request_to_backend(endpoint, payload)
     
     def claimFarm(self):
-        
         payload = {
             "authData": self.authData,
             "data":{},
             "devAuthData": self.admin,
         }
-        
-        r = self.session.post(
-            'https://cexp.cex.io/api/claimFarm', 
-            json=payload
-        ).json()
-        
-        return r
+        endpoint = 'https://cexp.cex.io/api/claimFarm'
+        return self.request_to_backend(endpoint, payload)
     
     def farmEndsAt(self):
-        
         try:
-            
-            data        = self.getUserInfo()
-            date_string = data['data']['farmStartedAt']
-            date_obj    = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
-            timestamp   = date_obj.timestamp() + (60*60*4) + (60*5)
-            
-            self._farms_end_time = timestamp
-            
-            return timestamp - time.time()
-        
-        except:
+            data = self.getUserInfo()
+            if data:
+                date_string = data['data']['farmStartedAt']
+                date_obj = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+                timestamp = date_obj.timestamp() + (60*60*4) + (60*5)
+                
+                self._farms_end_time = timestamp
+                return timestamp - time.time()
+            else:
+                self.logger.error("Failed to get user info for farm end time.")
+                return 0
+        except Exception as e:
+            self.logger.error(f"Error calculating farm end time: {e}")
             return 0
     
     def farms_end_time(self):
         return self._farms_end_time - time.time()
     
     def check_for_clicks(self):
-        
         r = self.getUserInfo()
-        availableTaps = r['data']['availableTaps']
-        
-        if availableTaps > 0:
-            self.claimTaps(availableTaps)
-        
-        try:
-            if self.farmEndsAt() < 1:
-                self.claimFarm()
-                self.startFarm()
-        except Exception as e:
-            self.logger.warning("[!] Error in Cex_IO:check_for_clicks:  " + str(e))
+        if r:
+            availableTaps = r['data']['availableTaps']
+            if availableTaps > 0:
+                self.claimTaps(availableTaps)
+            try:
+                if self.farmEndsAt() < 1:
+                    self.claimFarm()
+                    self.startFarm()
+            except Exception as e:
+                self.logger.warning("[!] Error in Cex_IO:check_for_clicks: " + str(e))
+        else:
+            self.logger.error("Failed to get user info for checking clicks.")
     
     def do_tasks(self):
         r = self.getUserInfo()
-        
-        self.check_for_clicks()
-        
-        for task in r['data']['tasks']:
-            if r['data']['tasks'][task]['state'] != "Claimed":
-                self.startTask(task)
-        
-        time.sleep(60)
-        
-        for task in r['data']['tasks']:
-            if r['data']['tasks'][task]['state'] != "Claimed":
-                self.checkTask(task)
+        if r:
+            self.check_for_clicks()
+            for task in r['data']['tasks']:
+                if r['data']['tasks'][task]['state'] != "Claimed":
+                    self.startTask(task)
+            time.sleep(60)
+            for task in r['data']['tasks']:
+                if r['data']['tasks'][task]['state'] != "Claimed":
+                    self.checkTask(task)
+        else:
+            self.logger.error("Failed to get user info for doing tasks.")
