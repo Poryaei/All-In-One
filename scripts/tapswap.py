@@ -13,9 +13,9 @@ from scripts.logger import setup_custom_logger
 
 
 class TapSwap:
-    def __init__(self, url: str, auto_upgrade:bool, max_charge_level:int, max_energy_level:int, max_tap_level:int):
+    def __init__(self, url: str, auto_upgrade:bool, max_charge_level:int, max_energy_level:int, max_tap_level:int, client_id:int=1):
         
-        self.logger = setup_custom_logger("TapSwap")
+        self.logger = setup_custom_logger(f"TapSwap | User: {client_id}")
         
         if auto_upgrade:
             self.max_charge_level = max_charge_level
@@ -358,15 +358,17 @@ class TapSwap:
         charge_level = xtap['player']['charge_level']
         shares = xtap['player']['shares']
         
+        total_taps = 0
+        self.logger.info('Starting the clicking process on TapSwap 🔘')
+        
         while energy > tap_level*3:
             
             maxClicks = min([round(energy/tap_level)-1, random.randint(66, 84)])
             
             if maxClicks > 1:
+                
                 sleepTime = self.sleep_time(maxClicks)
-                
-                self.logger.debug(f'[~] Sleeping {sleepTime} for next tap.')
-                
+                                
                 time.sleep(sleepTime)
                 
                 xtap = self.submit_taps(maxClicks)
@@ -376,29 +378,24 @@ class TapSwap:
                 tap_level = xtap['player']['tap_level']
                 
                 shares = xtap['player']['shares']
-                
-                self.logger.debug(f'[+] Balance : {shares}')
-                
+                                
                 self.balance = shares
+                total_taps   += maxClicks
                 
             else:
                 break
         
+        self.logger.info(f'Clicks were successful! | Total clicks: {total_taps} | Balance growth: (+{total_taps*tap_level})')
+        
         for boost in xtap['player']['boost']:
             if boost['type'] == 'energy' and boost['cnt'] > 0:
-                
                 self.logger.debug('[+] Activing Full Tank ...')
-                
                 self.apply_boost()
-                
                 self.click_all()
             
             if boost['type'] == 'turbo' and boost['cnt'] > 0:
-                
                 self.logger.debug('[+] Activing Turbo ...')
-                
                 self.apply_boost("turbo")
-                
                 self.click_turbo()
         
         time_to_recharge = ((energy_level*500)-energy) / charge_level
@@ -408,7 +405,7 @@ class TapSwap:
         return self.balance
     
     def time_to_recharge(self):
-        return self._time_to_recharge + random.randint(60*2, 60*12)
+        return self._time_to_recharge + random.randint(60*1, 60*6)
 
 class JSCodeProcessor:
     def __init__(self, js_code):
