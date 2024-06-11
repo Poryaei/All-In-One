@@ -7,15 +7,17 @@ from datetime import datetime, timedelta
 from scripts.logger import setup_custom_logger
 
 class HamsterCombat:
-    def __init__(self, url, max_days_for_return: int) -> None:
+    def __init__(self, url, max_days_for_return: int, client_id:int=1) -> None:
         self.url = url
         self.mining = False
         self.maxtries = 10
-        self.logger = setup_custom_logger("Hamster")
+        self.logger = setup_custom_logger(f"Hamster | User: {client_id}")
         self.token = None
         self.token_expiration = None
         self.max_days_for_return = max_days_for_return
         self.sleep_time = 0
+        self.earn_passive_per_hour = 0
+        self.earn_passive_per_seconds = 0
 
         if not self.auth_token(self.url):
             self.logger.error("Failed to get Auth Token. Stopping the class initialization.")
@@ -26,7 +28,7 @@ class HamsterCombat:
             "accept-language": "en-US,en;q=0.9,fa;q=0.8",
             "content-type": "application/json",
             "Authorization": f"Bearer {self.token}",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+            "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 13; iPhone 15 Pro Max) AppleWebKit/533.2 (KHTML, like Gecko) Version/122.0 Mobile/15E148 Safari/533.2"
         }
         self.select_exchange()
 
@@ -42,7 +44,7 @@ class HamsterCombat:
             "initDataRaw": urllib.parse.unquote(url).split('tgWebAppData=')[1].split('&tgWebAppVersion')[0],
             "fingerprint": {}
         }
-
+        
         for _ in range(self.maxtries):
             try:
                 response = requests.post(
@@ -123,6 +125,8 @@ class HamsterCombat:
     def balance_coins(self):
         response = self.post_request('/clicker/sync')
         if response:
+            self.earn_passive_per_hour    = response['clickerUser']['earnPassivePerHour']
+            self.earn_passive_per_seconds = response['clickerUser']['earnPassivePerSec']
             return response['clickerUser']['balanceCoins']
         return False
 
@@ -229,35 +233,46 @@ class HamsterCombat:
             self.logger.debug(f'[~] Updated:  {len(updates)}')
             return updates
     
+    def update_all(self):
+        while len(self.buy_bests()) > 0:
+            pass
+        return
+    
     def tap_all(self):
         
         taps = self.tap(1)
         maxTaps           = taps['clickerUser']['maxTaps']
         availableTaps     = taps['clickerUser']['availableTaps']
+        earnPerTap        = taps['clickerUser']['earnPerTap']
         tapsRecoverPerSec = taps['clickerUser']['tapsRecoverPerSec']
-        self.sleep_time   = self.wait_time(maxTaps, availableTaps, tapsRecoverPerSec)
-        
-        if maxTaps - availableTaps > 10:
+        self.sleep_time   = self.wait_time(maxTaps, availableTaps, tapsRecoverPerSec) + time.time() + (60*random.randint(1, 6))
+        if maxTaps - availableTaps > 50:
             self.logger.debug('[~] Wait for full charge')
             return
         
-        while availableTaps > 10:
+        total_taps = 0
+        
+        self.logger.info('Start clicking process on Hamster 🐹')
+        
+        while availableTaps > 50:
             
             x = random.randint(90, 240)
             if x > availableTaps:
                 x = availableTaps
             
-            self.logger.debug(f'[~] Tapping {x} Times')
-            
+            total_taps += x
+                        
             taps          = self.tap(x, availableTaps)
             availableTaps = taps['clickerUser']['availableTaps']
             balanceCoins  = taps['clickerUser']['balanceCoins']
             
-            self.logger.debug('[+] Available Taps: ' + str(availableTaps))
-            self.logger.debug('[+] Balance Coins: ' + str(round(balanceCoins, 3)))
-            
             time.sleep(random.randint(1, 2))
         
-        self.sleep_time = self.wait_time(maxTaps, availableTaps, tapsRecoverPerSec)
+        self.logger.info(f'Clicks were successful! | Total clicks: {total_taps} | Balance growth: (+{total_taps*earnPerTap})')
         
-        return self.sleep_time + time.time() + (60*random.randint(1, 12))
+        self.sleep_time = self.wait_time(maxTaps, availableTaps, tapsRecoverPerSec) + time.time() + (60*random.randint(1, 6))
+        
+        if self.check_boosts():
+            return self.tap_all()
+        
+        return self.sleep_time + time.time() + (60*random.randint(1, 6))
