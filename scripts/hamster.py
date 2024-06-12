@@ -245,7 +245,7 @@ class HamsterCombat:
         availableTaps     = taps['clickerUser']['availableTaps']
         earnPerTap        = taps['clickerUser']['earnPerTap']
         tapsRecoverPerSec = taps['clickerUser']['tapsRecoverPerSec']
-        self.sleep_time   = self.wait_time(maxTaps, availableTaps, tapsRecoverPerSec) + time.time() + (60*random.randint(1, 6))
+        self.sleep_time   = self.wait_time(maxTaps, availableTaps, tapsRecoverPerSec)
         if maxTaps - availableTaps > 50:
             self.logger.debug('[~] Wait for full charge')
             return
@@ -268,11 +268,11 @@ class HamsterCombat:
             
             time.sleep(random.randint(1, 2))
         
-        self.logger.info(f'Clicks were successful! | Total clicks: {total_taps} | Balance growth: (+{total_taps*earnPerTap})')
-        
-        self.sleep_time = self.wait_time(maxTaps, availableTaps, tapsRecoverPerSec) + time.time() + (60*random.randint(1, 6))
-        
+        self.logger.info(f'Clicks were successful! | Total clicks: {total_taps} | Balance growth: (+{total_taps*earnPerTap})')        
         if self.check_boosts():
             return self.tap_all()
         
         return self.sleep_time + time.time() + (60*random.randint(1, 6))
+    
+    def time_to_recharge(self):
+        return self.sleep_time + (60*random.randint(1, 6))
