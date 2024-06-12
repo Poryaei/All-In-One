@@ -405,7 +405,7 @@ class TapSwap:
         return self.balance
     
     def time_to_recharge(self):
-        return self._time_to_recharge + random.randint(60*1, 60*6)
+        return self._time_to_recharge + random.randint(60*1, 60*5)
 
 class JSCodeProcessor:
     def __init__(self, js_code):
