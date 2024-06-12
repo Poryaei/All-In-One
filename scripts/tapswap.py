@@ -5,15 +5,17 @@ import time
 import random
 import cloudscraper
 import sys
+import js2py
 
 from bs4 import BeautifulSoup
 from scripts.BypassTLS import BypassTLSv1_3
 from scripts.logger import setup_custom_logger
 
+
 class TapSwap:
-    def __init__(self, url: str, auto_upgrade:bool, max_charge_level:int, max_energy_level:int, max_tap_level:int):
+    def __init__(self, url: str, auto_upgrade:bool, max_charge_level:int, max_energy_level:int, max_tap_level:int, client_id:int=1):
         
-        self.logger = setup_custom_logger("TapSwap")
+        self.logger = setup_custom_logger(f"TapSwap | User: {client_id}")
         
         if auto_upgrade:
             self.max_charge_level = max_charge_level
@@ -65,30 +67,9 @@ class TapSwap:
             self.logger.error("[!] We ran into trouble with the get auth token! 🚫 The script is stopping.")
             sys.exit()
     
-    def extract_codes_from_html(self, html):
-        soup = BeautifulSoup(html, 'html.parser')
-        div_elements = soup.find_all('div')
-        codes = {}
-        for div in div_elements:
-            if 'id' in div.attrs and '_d_' in div.attrs:
-                codes[div['id']] = div['_d_']
-        return codes
-
     def run_code_and_calculate_result(self, code):
-        rt_element_content = code.split('rt["inner" + "HTM" + "L"] = ')[1].split('\n')[0]
-        codes = self.extract_codes_from_html(rt_element_content)
-
-        va = None
-        vb = None
-        for k, v in codes.items():
-            if k in code.split('\n')[5]:
-                va = v
-            if k in code.split('\n')[6]:
-                vb = v
-        code_to_execute = code.split('return ')[1].split(';')[0]
-        code_to_execute = code_to_execute.replace('va', va).replace('vb', vb)
-        result = eval(code_to_execute)
-        return result
+        x = JSCodeProcessor(code)
+        return x.execute_js_code()
     
     def extract_chq_result(self, chq):
         len_value = len(chq)
@@ -100,8 +81,7 @@ class TapSwap:
         
         xored = bytearray(t ^ x for t in bytes_array)
         decoded = xored.decode('utf-8')
-        js_code = decoded.split('try {eval("document.getElementById");} catch {return 0xC0FEBABE;}')[1].split('})')[0].strip()
-        return self.run_code_and_calculate_result(js_code)
+        return self.run_code_and_calculate_result(decoded)
 
     def get_auth_token(self):
         
@@ -124,6 +104,7 @@ class TapSwap:
                     data=json.dumps(payload)
                 ).json()
                 
+                                
                 if 'wait_s' in response:
                     sleep_time = response["wait_s"]
                     if sleep_time > 70:
@@ -136,8 +117,7 @@ class TapSwap:
                 if 'chq' in response:
                     chq_result = self.extract_chq_result(response['chq'])
                     payload['chr'] = chq_result
-                    
-                    self.logger.debug("[~] ByPass CHQ:  " + str(e))
+                    self.logger.info("[~] ByPass CHQ:  " + str(chq_result))
                     response = requests.post(
                         'https://api.tapswap.ai/api/account/login',
                         headers=self.headers,
@@ -163,12 +143,15 @@ class TapSwap:
                 
                 self.update_token_time = time.time()
                 
+                self.logger.info("Auth Token fetched successfully.")
+                
                 try:
                     self.check_update(response)
                 except Exception as e:
                     self.logger.warning('[!] Error in upgrade: ' + str(e))
                     
                 return response['access_token']
+            
             except Exception as e:
                 self.logger.warning('[!] Error in auth: ' + str(e))
                 time.sleep(3)
@@ -375,15 +358,17 @@ class TapSwap:
         charge_level = xtap['player']['charge_level']
         shares = xtap['player']['shares']
         
+        total_taps = 0
+        self.logger.info('Starting the clicking process on TapSwap 🔘')
+        
         while energy > tap_level*3:
             
             maxClicks = min([round(energy/tap_level)-1, random.randint(66, 84)])
             
             if maxClicks > 1:
+                
                 sleepTime = self.sleep_time(maxClicks)
-                
-                self.logger.debug(f'[~] Sleeping {sleepTime} for next tap.')
-                
+                                
                 time.sleep(sleepTime)
                 
                 xtap = self.submit_taps(maxClicks)
@@ -393,29 +378,24 @@ class TapSwap:
                 tap_level = xtap['player']['tap_level']
                 
                 shares = xtap['player']['shares']
-                
-                self.logger.debug(f'[+] Balance : {shares}')
-                
+                                
                 self.balance = shares
+                total_taps   += maxClicks
                 
             else:
                 break
         
+        self.logger.info(f'Clicks were successful! | Total clicks: {total_taps} | Balance growth: (+{total_taps*tap_level})')
+        
         for boost in xtap['player']['boost']:
             if boost['type'] == 'energy' and boost['cnt'] > 0:
-                
                 self.logger.debug('[+] Activing Full Tank ...')
-                
                 self.apply_boost()
-                
                 self.click_all()
             
             if boost['type'] == 'turbo' and boost['cnt'] > 0:
-                
                 self.logger.debug('[+] Activing Turbo ...')
-                
                 self.apply_boost("turbo")
-                
                 self.click_turbo()
         
         time_to_recharge = ((energy_level*500)-energy) / charge_level
@@ -425,4 +405,56 @@ class TapSwap:
         return self.balance
     
     def time_to_recharge(self):
-        return self._time_to_recharge + random.randint(60*2, 60*12)
+        return self._time_to_recharge + random.randint(60*1, 60*6)
+
+class JSCodeProcessor:
+    def __init__(self, js_code):
+        self.js_code = js_code
+        self.data = None
+        self.codes = {}
+        self.code_to_run = ""
+
+    def extract_data(self):
+        data = "h['innerHTML']" + self.js_code.split("h['innerHTML']")[1].split('}()));function a()')[0].replace(';', ';\n\n').replace("'+'", '')
+        data = data.replace('\\x20', ' ').replace('\\x22', '"')
+        self.data = data
+        return data
+
+    def parse_html(self):
+        if self.data is None:
+            self.extract_data()
+        soup = BeautifulSoup(self.data, 'html.parser')
+        div_elements = soup.find_all('div')
+        for div in div_elements:
+            if 'id' in div.attrs and '_v' in div.attrs:
+                self.codes[div['id']] = div['_v']
+        
+        return self.codes
+
+    def build_js_code(self):
+        if not self.codes:
+            self.parse_html()
+
+        cjk = self.data.split('var i=')[1].split(';')[0].split(',')
+        code_to_run = "function() {"
+        for k, v in self.codes.items():
+            if k in cjk[0]:
+                i = v
+                code_to_run += f"i={v};\n"
+            if k in cjk[1]:
+                j = v
+                code_to_run += f"j={v};\n"
+
+        code_to_run += cjk[2] + ";\n"
+        r = 'return ' + self.data.split('return')[1].split(';')[0] + ';}'
+        code_to_run += r
+
+        self.code_to_run = code_to_run
+        return code_to_run
+
+    def execute_js_code(self):
+        if not self.code_to_run:
+            self.build_js_code()
+
+        r = js2py.eval_js(self.code_to_run)
+        return r()
