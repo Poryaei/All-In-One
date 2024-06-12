@@ -153,7 +153,7 @@ class Cex_IO:
             return 0
     
     def farms_end_time(self):
-        return self._farms_end_time - time.time()
+        return self._farms_end_time
     
     def check_for_clicks(self):
         r = self.getUserInfo()
