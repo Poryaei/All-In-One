@@ -7,6 +7,7 @@ from scripts.hamster import HamsterCombat
 from scripts.cexio   import Cex_IO
 from scripts.logger  import setup_custom_logger
 from scripts.cache_data import SimpleCache
+from scripts.bypass_js import driver_instance
 
 from telethon.sync import TelegramClient
 from telethon.sync import functions, events
@@ -319,7 +320,7 @@ tapswap_url = cache_db.get('tapswap_url')
 hamster_url = cache_db.get('hamster_url')
 cex_io_url  = cache_db.get('cex_io_url')
 
-tapswap_client = TapSwap(tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level)
+tapswap_client = TapSwap(tapswap_url, driver_instance.execute_script, auto_upgrade, max_charge_level, max_energy_level, max_tap_level)
 hamster_client = HamsterCombat(hamster_url, max_days_for_return)
 cex_io_client  = Cex_IO(cex_io_url, client_id)    
 
