@@ -7,7 +7,6 @@ from scripts.cexio      import Cex_IO
 from scripts.logger     import setup_custom_logger
 from scripts.cache_data import SimpleCache
 from scripts.tg_client  import create_client
-from scripts.bypass_js  import driver_instance
 
 from telethon.sync import TelegramClient
 from telethon import functions, types, events, Button, errors
@@ -105,7 +104,7 @@ def create_clickers():
                 return
 
             try:
-                tapswap_client = TapSwap(tapswap_url, driver_instance.execute_script, auto_upgrade, max_charge_level, max_energy_level, max_tap_level, client_id)
+                tapswap_client = TapSwap(tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level, client_id)
                 Thread(target=tapswap_client.click_all).start()
                 next_tap = time.time() + tapswap_client.time_to_recharge()
                 h, m = convert_time(tapswap_client.time_to_recharge())
@@ -174,7 +173,7 @@ def start_clickers():
             
             if time.time() > next_tapswap_click:
                 try:
-                    tapswap_client = TapSwap(tapswap_url, driver_instance.execute_script, auto_upgrade, max_charge_level, max_energy_level, max_tap_level, client_id)
+                    tapswap_client = TapSwap(tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level, client_id)
                     tapswap_client.click_all()
                     next_tap = time.time() + tapswap_client.time_to_recharge()
                     cache_db.set('next_tapswap_click', next_tap )
@@ -463,10 +462,6 @@ Coded By: @uPaSKaL | GitHub: [Poryaei](https://github.com/Poryaei)
     elif text == '/stop':
         await event.reply('👋')
         sys.exit()
-    
-    
-
-
 
 
 create_clickers()
