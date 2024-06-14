@@ -6,4 +6,3 @@ aiocron
 psutil
 telethon
 js2py
-seleniumbase
