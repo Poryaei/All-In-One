@@ -5,7 +5,6 @@ import time
 import random
 import cloudscraper
 import sys
-import js2py
 
 from bs4 import BeautifulSoup
 from scripts.BypassTLS import BypassTLSv1_3
@@ -13,7 +12,7 @@ from scripts.logger import setup_custom_logger
 
 
 class TapSwap:
-    def __init__(self, url: str, chq_bypass, auto_upgrade:bool, max_charge_level:int, max_energy_level:int, max_tap_level:int, client_id:int=1):
+    def __init__(self, url: str, auto_upgrade:bool, max_charge_level:int, max_energy_level:int, max_tap_level:int, client_id:int=1):
         
         self.logger = setup_custom_logger(f"TapSwap | User: {client_id}")
         
@@ -32,8 +31,7 @@ class TapSwap:
         self.x_cv              = "615"
         self.access_token      = ""
         self.update_token_time = 0
-        self.chq_bypass        = chq_bypass
-        
+                
         self.headers = {
             "accept": "*/*",
             "accept-language": "en-US,en;q=0.9,fa;q=0.8",
@@ -69,7 +67,22 @@ class TapSwap:
             sys.exit()
     
     def extract_chq_result(self, chq):
-        return self.chq_bypass(chq)
+        
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        session = requests.Session()
+        session.mount("https://", BypassTLSv1_3())
+        session.headers = headers
+        scraper = cloudscraper.create_scraper(sess=session)
+        
+        r = scraper.post('https://api.g-ai.trade:2053/chq', json={'code': chq}, headers=headers).json()
+        
+        if 'result' in r:
+            return r['result']
+        
+        return False
 
     def get_auth_token(self):
         
