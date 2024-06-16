@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 
 logger   = setup_custom_logger("mainapp")
-executor = ThreadPoolExecutor(3)
+executor = ThreadPoolExecutor(15)
 
 
 
@@ -63,10 +63,13 @@ while input("Press 1 to add account (session / clicker), or any other key to sta
     print(m)
 
     
-
+if not os.path.exists('sessions'):
+    os.mkdir('sessions')
 
 client = TelegramClient('sessions/robot', api_id, api_hash)
 client.start(bot_token=bot_token)
+
+print("Client is ready")
 
 db = {
     'click': 'on',
@@ -76,7 +79,7 @@ clickers = {}
 url_files = [f for f in os.listdir('cache') if f.endswith('.json')]
 
 
-VERSION    = "1.0.1"
+VERSION    = "1.0.2"
 START_TIME = time.time()
 
 def convert_time(uptime):
@@ -86,196 +89,159 @@ def convert_time(uptime):
     return (hours if hours > 0 else 0), minutes
 
 
-def create_clickers():    
-    logger.info('Start connecting the clickers! 💻🔗')
-    
-    tasks = []
-    
-    def connect(file):
-        try:
-            client_id = file.split('.json')[0]
-            cache_db = SimpleCache(client_id)
-            
-            tapswap_url = cache_db.get('tapswap_url')
-            hamster_url = cache_db.get('hamster_url')
-            cex_io_url  = cache_db.get('cex_io_url')
-            
-            if not tapswap_url:
-                return
-
-            try:
-                tapswap_client = TapSwap(tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level, client_id)
-                Thread(target=tapswap_client.click_all).start()
-                next_tap = time.time() + tapswap_client.time_to_recharge()
-                h, m = convert_time(tapswap_client.time_to_recharge())
-                logger.info(f'User: {client_id} | Next TapSwap tap in {h} Hour and {m} Minute')
-                cache_db.set('next_tapswap_click', next_tap )
-                cache_db.set('tapswap_balance', tapswap_client.shares())
-            except Exception as e:
-                logger.error(f'Error in building TapSwap[{file}]: ' + str(e))
-                        
-            try:
-                hamster_client = HamsterCombat(hamster_url, max_days_for_return, client_id)
-                Thread(target=hamster_client.tap_all).start()
-                time.sleep(3)
-                next_tap = time.time() + hamster_client.time_to_recharge()
-                h, m = convert_time(hamster_client.time_to_recharge())
-                logger.info(f'User: {client_id} | Next Hamster tap in {h} Hour and {m} Minute')
-                cache_db.set('next_hamster_click', next_tap)
-                cache_db.set('hamster_balance', hamster_client.balance_coins())
-                cache_db.set('hamster_earn_per_hour', hamster_client.earn_passive_per_hour)
-            except Exception as e:
-                logger.error(f'Error in building Hamster[{file}]: ' + str(e))
-            
-            try:
-                cex_io_client  = Cex_IO(cex_io_url, client_id)
-                cex_io_client.check_for_clicks()
-                cache_db.set('next_cexio_click', cex_io_client.farms_end_time())
-                cache_db.set('cex_io_balance', cex_io_client.balance())       
-            except Exception as e:
-                logger.error(f'Error in building Hamster[{file}]: ' + str(e))
-            
-            
-        except Exception as e:
-            logger.error(f'Error in building client[{file}]: ' + str(e))
-        
-    
-    for file in url_files:
-        tasks.append(executor.submit(connect, file))
-        
-    for t in tasks:
-        t.result()
-    
-    logger.info(f'{len(clickers)} clients have been successfully prepared.')
-
-
-def start_clickers():
-        
-    tasks = []
-    def click(file):
-        
+def connect(file):
+    try:
         client_id = file.split('.json')[0]
+        logger.debug("Starting: " + client_id)
         cache_db = SimpleCache(client_id)
         
         tapswap_url = cache_db.get('tapswap_url')
         hamster_url = cache_db.get('hamster_url')
         cex_io_url  = cache_db.get('cex_io_url')
         
-        next_tapswap_click  = cache_db.get('next_tapswap_click')
-        next_hamster_click  = cache_db.get('next_hamster_click')
-        next_cexio_click    = cache_db.get('next_cexio_click')
+        if tapswap_url and tapswap_clicker == "on":
+            start_tapswap_client(file, client_id, cache_db, tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level)
         
+        if hamster_url and hamster_clicker == "on":
+            start_hamster_client(file, client_id, cache_db, hamster_url, max_days_for_return)
         
-        if not tapswap_url:
-            return
+        if cex_io_url and cexio_clicker == "on":
+            start_cex_io_client(file, client_id, cache_db, cex_io_url)
         
-        if tapswap_clicker == "on":
-            
-            if time.time() > next_tapswap_click:
-                try:
-                    tapswap_client = TapSwap(tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level, client_id)
-                    tapswap_client.click_all()
-                    next_tap = time.time() + tapswap_client.time_to_recharge()
-                    cache_db.set('next_tapswap_click', next_tap )
-                    cache_db.set('tapswap_balance', tapswap_client.shares())
-                except Exception as e:
-                    logger.warning(f"User: {client_id} | Error in click all: " + str(e))
+    except Exception as e:
+        logger.error(f'Error in building client[{file}]: ' + str(e))
         
-        if cexio_clicker == "on":
-            
-            if time.time() > next_cexio_click:
-                try:
-                    cex_io_client  = Cex_IO(cex_io_url, client_id)
-                    cex_io_client.check_for_clicks()
-                    cache_db.set('next_cexio_click', cex_io_client.farms_end_time())
-                    cache_db.set('cex_io_balance', cex_io_client.balance())
-                except Exception as e:        
-                    logger.warning(f"User: {client_id} | Error in Cex_IO Click: " + str(e))
-        
-        if hamster_clicker == "on":
-            
-            if time.time() > next_hamster_click:
-                try:
-                    hamster_client = HamsterCombat(hamster_url, max_days_for_return, client_id)
-                    hamster_client.tap_all()
-                    hamster_client.update_all()
-                    next_tap = time.time() + hamster_client.time_to_recharge()
-                    cache_db.set('next_hamster_click', next_tap)
-                    cache_db.set('hamster_balance', hamster_client.balance_coins())
-                    cache_db.set('hamster_earn_per_hour', hamster_client.earn_passive_per_hour)
-                except Exception as e:        
-                    logger.warning(f"User: {client_id} | Error in Hamster Click: " + str(e))
+def start_tapswap_client(file, client_id, cache_db, tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level):
+    next_tapswap_click = cache_db.get('next_tapswap_click')
+    if next_tapswap_click and time.time() < next_tapswap_click:
+        return
+    try:
+        cache_db.set('next_tapswap_click', time.time() + (60*15))
+        tapswap_client = TapSwap(tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level, client_id)
+        tapswap_client.click_all()
+        next_tap = time.time() + tapswap_client.time_to_recharge()
+        cache_db.set('next_tapswap_click', next_tap)
+        cache_db.set('tapswap_balance', tapswap_client.shares())
+    except Exception as e:
+        logger.error(f'Error in building TapSwap[{file}]: ' + str(e))
+
+def start_hamster_client(file, client_id, cache_db, hamster_url, max_days_for_return):
+    next_hamster_click = cache_db.get('next_hamster_click')
+    if next_hamster_click == None or time.time() < next_hamster_click:
+        return
+    
+    try:
+        cache_db.set('next_hamster_click', time.time() + (60*15))
+        hamster_client = HamsterCombat(hamster_url, max_days_for_return, client_id)
+        hamster_client.tap_all()
+        hamster_client.update_all()
+        next_tap = time.time() + hamster_client.time_to_recharge()
+        cache_db.set('next_hamster_click', next_tap)
+        cache_db.set('hamster_balance', hamster_client.balance_coins())
+        cache_db.set('hamster_earn_per_hour', hamster_client.earn_passive_per_hour)
+    except Exception as e:
+        logger.error(f'Error in building Hamster[{file}]: ' + str(e))
+
+def start_cex_io_client(file, client_id, cache_db, cex_io_url):
+    next_cexio_click = cache_db.get('next_cexio_click')
+    if next_cexio_click and time.time() < next_cexio_click:
+        return
+    try:
+        cex_io_client = Cex_IO(cex_io_url, client_id)
+        cex_io_client.check_for_clicks()
+        cache_db.set('next_cexio_click', cex_io_client.farms_end_time())
+        cache_db.set('cex_io_balance', cex_io_client.balance())
+    except Exception as e:
+        logger.error(f'Error in building Cex_IO[{file}]: ' + str(e))
+
+def start_clickers():
+    global db
+    db['start'] = True
+    tasks = []
     
     for file in url_files:
-        tasks.append(executor.submit(click, file))
+        tasks.append(executor.submit(connect, file))
     
     for t in tasks:
         try:
             t.result()
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Error in task execution: {str(e)}")
     
     db['start'] = False
 
-def hamster_do_tasks():    
-    for file in url_files:
+def hamster_do_tasks():
+    def task(file):
         client_id = file.split('.json')[0]
         cache_db = SimpleCache(client_id)
-        
         hamster_url = cache_db.get('hamster_url')
-        
         try:
             hamster_client = HamsterCombat(hamster_url, max_days_for_return, client_id)
             hamster_client.do_tasks()
+            return f"User: {client_id} | Tasks done"
         except Exception as e:
             logger.warning(f"User: {client_id} | Error in Hamster Tasks: " + str(e))
-
-def daily_cipher(cipher:str):
+            return f"User: {client_id} | Error: {str(e)}"
     
-    for file in url_files:
+    with concurrent.futures.ThreadPoolExecutor(10) as executor:
+        results = list(executor.map(task, url_files))
+    return results
+
+def daily_cipher(cipher: str):
+    def task(file):
         client_id = file.split('.json')[0]
         cache_db = SimpleCache(client_id)
-        
         hamster_url = cache_db.get('hamster_url')
-        
         try:
             hamster_client = HamsterCombat(hamster_url, max_days_for_return, client_id)
             hamster_client.claim_daily_cipher(cipher)
+            return f"User: {client_id} | Daily cipher claimed"
         except Exception as e:
             logger.warning(f"User: {client_id} | Error in Hamster Daily Cipher: " + str(e))
+            return f"User: {client_id} | Error: {str(e)}"
+    
+    with concurrent.futures.ThreadPoolExecutor(10) as executor:
+        results = list(executor.map(task, url_files))
+    return results
 
 def daily_combo():
-    
-    for file in url_files:
+    def task(file):
         client_id = file.split('.json')[0]
         cache_db = SimpleCache(client_id)
-        
         hamster_url = cache_db.get('hamster_url')
-        
         try:
             hamster_client = HamsterCombat(hamster_url, max_days_for_return, client_id)
             hamster_client.claim_daily_combo()
+            return f"User: {client_id} | Daily combo claimed"
         except Exception as e:
             logger.warning(f"User: {client_id} | Error in Hamster Daily Combo: " + str(e))
+            return f"User: {client_id} | Error: {str(e)}"
+    
+    with concurrent.futures.ThreadPoolExecutor(10) as executor:
+        results = list(executor.map(task, url_files))
+            
+    return results
 
-def buy_card(item:str):
-    for file in url_files:
+def buy_card(item: str):
+    def task(file):
         client_id = file.split('.json')[0]
         cache_db = SimpleCache(client_id)
-        
         hamster_url = cache_db.get('hamster_url')
-        
         try:
             hamster_client = HamsterCombat(hamster_url, max_days_for_return, client_id)
-            hamster_client.upgrade_item(item)
+            r = hamster_client.upgrade_item(item)
+            return f"User: {client_id} | Card bought: {r}"
         except Exception as e:
             logger.warning(f"User: {client_id} | Error in Hamster buy card: " + str(e))
-
-
-
-def total_balance():
-    global clickers
+            return f"User: {client_id} | Error: {str(e)}"
     
+    with concurrent.futures.ThreadPoolExecutor(10) as executor:
+        results = list(executor.map(task, url_files))
+    return results
+
+
+
+def total_balance():    
     tapswap = 0
     hamster = 0
     cexio   = 0
@@ -294,11 +260,9 @@ def total_balance():
         
         try:
             hamster += float(cache_db.get('hamster_balance'))
-            
             hamster_earn_per_hour += float(cache_db.get('hamster_earn_per_hour'))
             data += f"User: `{client_id}` | 🐹 Hamster: `{convert_big_number(float(cache_db.get('hamster_balance')))}`\n"
             data += f"User: `{client_id}` | 🐹 Hamster PPH: `{convert_big_number(float(cache_db.get('hamster_earn_per_hour')))}`\n"
-            
         except:
             pass
         
@@ -464,7 +428,7 @@ Coded By: @uPaSKaL | GitHub: [Poryaei](https://github.com/Poryaei)
         sys.exit()
 
 
-create_clickers()
+start_clickers()
 
 @aiocron.crontab('*/1 * * * *')
 async def send_taps():
@@ -473,6 +437,7 @@ async def send_taps():
         return
     db['start'] = True
     Thread(target=start_clickers).start()
+    await client.send_message(admin, "Start Tapping ⛏️")
     
     
 
