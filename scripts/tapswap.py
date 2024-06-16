@@ -25,7 +25,7 @@ class TapSwap:
             self.max_energy_level = 1
             self.max_tap_level    = 1
         
-        
+        self.is_ready          = False
         self.webappurl         = url
         self.init_data         = urllib.parse.unquote(url).split('tgWebAppData=')[1].split('&tgWebAppVersion')[0]
         self.x_cv              = "615"
@@ -58,54 +58,58 @@ class TapSwap:
     def prepare_prerequisites(self):
         uph = self.update_headers()
         if uph == False:
-            self.logger.error("[!] We ran into trouble with the updates to the headers! 🚫 The script is stopping.")
-            sys.exit()
+            self.logger.error("[!] We ran into trouble with the updates to the headers! 🚫 The class is not ready.")
+            return
         
         atk = self.get_auth_token()
         if atk == False:
-            self.logger.error("[!] We ran into trouble with the get auth token! 🚫 The script is stopping.")
-            sys.exit()
+            self.logger.error("[!] We ran into trouble with the get auth token! 🚫The class is not ready.")
+            return
+            
+        self.is_ready = True
+    
+    def isReady(self):
+        return self.is_ready
     
     def extract_chq_result(self, chq):
-        
         headers = {
             'Content-Type': 'application/json'
         }
-        
+
         session = requests.Session()
         session.mount("https://", BypassTLSv1_3())
         session.headers = headers
         scraper = cloudscraper.create_scraper(sess=session)
-        
-        r = scraper.post('https://api.g-ai.trade:2053/chq', json={'code': chq}, headers=headers).json()
-        
-        if 'result' in r:
-            return r['result']
-        
+
+        maxtries = 5
+        while maxtries >= 0:
+            try:
+                response = scraper.post('https://api.g-ai.trade:2053/chq', json={'code': chq}, headers=headers).json()
+                if 'result' in response:
+                    return response['result']
+            except Exception as e:
+                self.logger.warning(f'[!] Error extracting CHQ result: {str(e)}')
+            finally:
+                maxtries -= 1
+            time.sleep(7)
+
         return False
 
     def get_auth_token(self):
-        
         payload = {
             "init_data": self.init_data,
             "referrer": ""
         }
-        
         if time.time() - self.update_token_time < 30*60:
             return
-        
         maxtries = 7
-
         while maxtries >= 0:
             try:
-                
                 response = self.session.post(
                     'https://api.tapswap.ai/api/account/login',
                     headers=self.headers,
                     data=json.dumps(payload)
                 ).json()
-                
-                
                                 
                 if 'wait_s' in response:
                     sleep_time = response["wait_s"]
@@ -127,14 +131,9 @@ class TapSwap:
                     ).json()
                     
                 if not 'access_token' in response:
-                    
                     self.logger.warning("[!] There is no access_token in response")
-                    
                     time.sleep(3)
-                    
                     continue
-                        
-                    
                 
                 self.client_id = response['player']['id']
                 self.headers_requests['Authorization'] = f"Bearer {response['access_token']}"
@@ -142,98 +141,76 @@ class TapSwap:
                 energy_level = response['player']['energy_level']
                 charge_level = response['player']['charge_level']
                 self._time_to_recharge = (energy_level*500) / charge_level
-                
                 self.update_token_time = time.time()
-                
                 self.logger.info("Auth Token fetched successfully.")
-                
                 try:
                     self.check_update(response)
                 except Exception as e:
-                    self.logger.warning('[!] Error in upgrade: ' + str(e))
-                    
+                    self.logger.warning('[!] Error in upgrade: ' + str(e)) 
                 return response['access_token']
-            
             except Exception as e:
                 self.logger.warning('[!] Error in auth: ' + str(e))
                 time.sleep(3)
             finally:
                 maxtries -=1
-        
         return False
 
     def update_headers(self):
         maxtries = 5
-
         while maxtries >= 0:
             try:
                 headers = {
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
                 }
-
                 session = requests.Session()
                 session.mount("https://", BypassTLSv1_3())
                 session.headers = headers
                 scraper = cloudscraper.create_scraper(sess=session)
-                
                 headers_json = scraper.get(f'https://poeai.click/tapswap/headers.json').json()
-                
                 if 'dont_run_code' in headers_json:
                     continue
-                
                 self.headers.update(headers_json['login'])
                 self.headers_requests.update(headers_json['send_tap'])
-                
                 return self.headers_requests
-
             except Exception as e:
                 self.logger.warning('[!] Error in update headers: ' + str(e))
                 time.sleep(3)
-                
-
             finally:
                 maxtries -= 1
-        
         return False
     
     def check_update(self, response):
+        if not self.is_ready:
+            return
         charge_level = response['player']['charge_level']
         energy_level = response['player']['energy_level']
         tap_level    = response['player']['tap_level']
         shares       = response['player']['shares']
-
+        
         if charge_level < self.max_charge_level:
             price = 0
             while shares >= price:
                 for item in response['conf']['charge_levels']:
                     if item['rate'] == charge_level + 1:
                         price = item['price']
-                
                 if price > shares or charge_level >= self.max_charge_level:
                     break
-                
                 self.logger.debug('[+] Updating Charge Level')
-                
                 self.upgrade_boost('charge')
-
                 shares       -= price
                 charge_level += 1
-        
+            
         if energy_level < self.max_energy_level:
             price = 0
             while shares >= price:
                 for item in response['conf']['energy_levels']:
                     if item['limit'] == (energy_level + 1)*500:
                         price = item['price']
-                
                 if price > shares or energy_level >= self.max_energy_level:
                     break
-                
                 self.logger.debug('[+] Updating energy')
-                
                 self.upgrade_boost('energy')
-
                 shares       -= price
                 energy_level += 1
         
@@ -243,18 +220,16 @@ class TapSwap:
                 for item in response['conf']['tap_levels']:
                     if item['rate'] == tap_level + 1:
                         price = item['price']
-                
                 if price > shares or tap_level >= self.max_tap_level:
                     break
-                
                 self.logger.debug('[+] Updating taps')
-                
                 self.upgrade_boost('tap')
-
                 shares    -= price
                 tap_level += 1
             
     def tap_stats(self):
+        if not self.is_ready:
+            return
         response = self.session.get(
             'https://api.tapswap.ai/api/stat',
             headers=self.headers_requests,
@@ -262,6 +237,8 @@ class TapSwap:
         return response
     
     def upgrade_boost(self, boost_type: str = "energy"):
+        if not self.is_ready:
+            return
         payload = {"type": boost_type}
         response = self.session.post(
             'https://api.tapswap.ai/api/player/upgrade',
@@ -271,6 +248,8 @@ class TapSwap:
         return response
     
     def apply_boost(self, boost_type: str = "energy"):
+        if not self.is_ready:
+            return
         payload = {"type": boost_type}
         response = self.session.post(
             'https://api.tapswap.ai/api/player/apply_boost',
@@ -280,21 +259,17 @@ class TapSwap:
         return response
 
     def submit_taps(self, taps: int = 1):
-        
+        if not self.is_ready:
+            return
         o = int(time.time() * 1000)
-           
         result = o * self.client_id
         result = result * self.client_id
         result = result / self.client_id
         result = result % self.client_id
         result = result % self.client_id
-        
         content_id = int(result)
-        
         payload = {"taps": taps, "time": o}
-        
         self.headers_requests['Content-Id'] = str(content_id)
-
         while True:
             try:
                 response = self.session.post(
@@ -308,50 +283,38 @@ class TapSwap:
                 time.sleep(1)
     
     def sleep_time(self, num_clicks):
-        
         time_to_sleep = 0
-        
         for _ in range(num_clicks):
             time_to_sleep += random.uniform(0.1, 0.7)
-        
         return time_to_sleep
     
     def click_turbo(self):
+        if not self.is_ready:
+            return
         xtap = self.submit_taps(random.randint(60, 70))
         for boost in xtap['player']['boost']:
             if boost['type'] == 'turbo' and boost['end'] > time.time():
                 for _ in range(random.randint(3, 7)):
-                    
                     taps = random.randint(80, 86)
-                    
                     sleepTime = self.sleep_time(taps)
-                    
                     self.logger.debug(f'[~] Sleeping {sleepTime/6} for next tap.')
-                    
                     time.sleep(sleepTime/6)
-                    
                     self.logger.debug(f'[+] Turbo: {taps} ...')
-                    
                     xtap = self.submit_taps(taps)
-                    
                     shares = xtap['player']['shares']
-                    
                     self.logger.debug(f'[+] Balance : {shares}')
-                    
                     self.balance = shares
                 
                 if boost['cnt'] > 0:
-                    
                     self.logger.debug('[+] Activing Turbo ...')
-                    
                     self.apply_boost("turbo")
-                    
                     self.click_turbo()
     
     def click_all(self):
-        
         self.prepare_prerequisites()
         
+        if not self.is_ready:
+            return
         
         xtap = self.submit_taps(random.randint(1, 10))
         energy = xtap['player']['energy']
@@ -364,26 +327,16 @@ class TapSwap:
         self.logger.info('Starting the clicking process on TapSwap 🔘')
         
         while energy > tap_level*3:
-            
             maxClicks = min([round(energy/tap_level)-1, random.randint(66, 84)])
-            
             if maxClicks > 1:
-                
-                sleepTime = self.sleep_time(maxClicks)
-                                
-                time.sleep(sleepTime)
-                
+                sleepTime = self.sleep_time(maxClicks)                
+                time.sleep(sleepTime/3)
                 xtap = self.submit_taps(maxClicks)
-                
                 energy = xtap['player']['energy']
-                
                 tap_level = xtap['player']['tap_level']
-                
-                shares = xtap['player']['shares']
-                                
+                shares = xtap['player']['shares']                
                 self.balance = shares
                 total_taps   += maxClicks
-                
             else:
                 break
         
