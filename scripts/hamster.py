@@ -30,6 +30,7 @@ class HamsterCombat:
             "Authorization": f"Bearer {self.token}",
             "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 13; iPhone 15 Pro Max) AppleWebKit/533.2 (KHTML, like Gecko) Version/122.0 Mobile/15E148 Safari/533.2"
         }
+        
         self.select_exchange()
 
     def wait_time(self, max_taps: int, available_taps: int, taps_recover_per_sec: int):
@@ -194,7 +195,7 @@ class HamsterCombat:
             upgrades = response['upgradesForBuy']
             updates = []
             balance = self.balance_coins()
-            for i in range(1, self.max_days_for_return):
+            for i in range(1, self.max_days_for_return+1):
                 sorted_upgrades = self.find_best_upgrades(upgrades, i)
                 if len(sorted_upgrades) != 0:
                     break
@@ -213,6 +214,8 @@ class HamsterCombat:
                             continue
                         self.logger.debug('[~] Updating: ' + upgrade_to_buy['id'] + ' | x_day_return: ' + str(upgrade_to_buy['x_day_return']))
                         response = self.buy_upgrade(upgrade_to_buy['id'])
+                        if 'error_code' in response and response['error_code']:
+                            continue
                         updates.append(upgrade_to_buy)
                         balance -= upgrade_to_buy['price']
                     else:
@@ -227,6 +230,8 @@ class HamsterCombat:
                         continue
                     self.logger.debug('[~] Updating: ' + upgrade_to_buy['id'] + ' | x_day_return: ' + str(upgrade_to_buy['x_day_return']))
                     response = self.buy_upgrade(upgrade_to_buy['id'])
+                    if 'error_code' in response and response['error_code']:
+                        continue
                     updates.append(upgrade_to_buy)
                     balance -= upgrade_to_buy['price']
                     
