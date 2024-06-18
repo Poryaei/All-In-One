@@ -72,7 +72,8 @@ def start_tapswap_client(file, client_id, cache_db, tapswap_url, auto_upgrade, m
 
 def start_hamster_client(file, client_id, cache_db, hamster_url, max_days_for_return):
     next_hamster_click = cache_db.get('next_hamster_click')
-    if next_hamster_click == None or time.time() < next_hamster_click:
+    
+    if next_hamster_click and time.time() < next_hamster_click:
         return
     
     try:
