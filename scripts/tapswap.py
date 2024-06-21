@@ -26,6 +26,7 @@ class TapSwap:
             self.max_energy_level = 1
             self.max_tap_level    = 1
         
+        self.client_id         = client_id
         self.is_ready          = False
         self.webappurl         = url
         self.init_data         = urllib.parse.unquote(url).split('tgWebAppData=')[1].split('&tgWebAppVersion')[0]
@@ -134,7 +135,8 @@ class TapSwap:
                 if 'chq' in response:
                     chq_result = self.extract_chq_result(response['chq'])
                     self.headers.update({'Cache-Id': self.cache_id})
-                    payload['chr'] = chq_result
+                    three_digits = int(str(self.client_id)[-3:])
+                    payload['chr'] = chq_result + three_digits
                     self.logger.info("[~] ByPass CHQ:  " + str(chq_result))
                     response = self.session.post(
                         'https://api.tapswap.ai/api/account/login',
