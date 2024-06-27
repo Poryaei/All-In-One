@@ -4,6 +4,7 @@ import json, time
 from scripts.tapswap    import TapSwap
 from scripts.hamster    import HamsterCombat
 from scripts.cexio      import Cex_IO
+from scripts.blum       import Blum
 from scripts.logger     import setup_custom_logger
 from scripts.cache_data import SimpleCache
 
@@ -28,8 +29,10 @@ with open('config.json') as f:
     cexio_clicker    = data['cexio_clicker']
     tapswap_clicker  = data['tapswap_clicker']
     hamster_clicker  = data['hamster_clicker']
+    blum_clicker     = data['blum_clicker']
         
     cexio_ref_code   = data['cexio_ref_code']
+    blum_ref_code    = data['blum_ref_code']
 
 url_files = [f for f in os.listdir('cache') if f.endswith('.json')]
 
@@ -42,15 +45,19 @@ def connect(file):
         tapswap_url = cache_db.get('tapswap_url')
         hamster_url = cache_db.get('hamster_url')
         cex_io_url  = cache_db.get('cex_io_url')
+        blum_url    = cache_db.get('blum_url')
         
         if tapswap_url and tapswap_clicker == "on":
             start_tapswap_client(file, client_id, cache_db, tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level)
-        
+
         if hamster_url and hamster_clicker == "on":
             start_hamster_client(file, client_id, cache_db, hamster_url, max_days_for_return)
         
         if cex_io_url and cexio_clicker == "on":
             start_cex_io_client(file, client_id, cache_db, cex_io_url)
+        
+        if blum_url and blum_clicker == "on":
+            start_blum_client(file, client_id, cache_db, blum_url, blum_ref_code)
         
     except Exception as e:
         logger.error(f'Error in building client[{file}]: ' + str(e))
@@ -99,6 +106,20 @@ def start_cex_io_client(file, client_id, cache_db, cex_io_url):
         cache_db.set('cex_io_balance', cex_io_client.balance())
     except Exception as e:
         logger.error(f'Error in building Cex_IO[{file}]: ' + str(e))
+
+def start_blum_client(file, client_id, cache_db, blum_url, referralToken):
+    next_blum_click = cache_db.get('next_blum_click')
+    if next_blum_click and time.time() < next_blum_click:
+        return
+    try:
+        cache_db.set('next_blum_click', time.time() + (60*15))
+        blum_client = Blum(blum_url, client_id, referralToken)
+        blum_client.claim_pass()
+        blum_client.check_claim_and_play()
+        cache_db.set('next_blum_click', time.time() + (60*60*8 + 5*60))
+        cache_db.set('blum_balance', blum_client.balance()['availableBalance'])
+    except Exception as e:
+        logger.error(f'Error in building blum[{file}]: ' + str(e))
 
 def start_clickers():
     tasks = []
