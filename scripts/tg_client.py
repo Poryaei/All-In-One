@@ -115,6 +115,7 @@ def create_client(api_id, api_hash, admin, cexio_ref_code):
             client,
             'BlumCryptoBot',
             start_param=f'ref_{blum_ref_code}',
+            short_name='app'
         ).url
         
         cache_db.set('blum_url', blum_url)
