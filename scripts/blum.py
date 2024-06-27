@@ -130,5 +130,4 @@ class Blum:
             return response.json()
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Request to {url} failed: {e} | {response.text}")
-            self.active = False
             return {}
