@@ -44,11 +44,10 @@ with open('config.json') as f:
         
     cexio_ref_code   = data['cexio_ref_code']
     blum_ref_code    = data['blum_ref_code']
-    git_update       = data['git_update']
     git_email        = data['git_email']
     git_username     = data['git_username']
 
-if git_update:
+if git_email:
     command = ['git', 'config', '--global', 'user.email', git_email]
     command2 = ['git', 'config', '--global', 'user.name', git_username]
     subprocess.run(command)
