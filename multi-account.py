@@ -25,6 +25,7 @@ executor = ThreadPoolExecutor(15)
 
 if not os.path.exists('config.json'):
     print("Edit and rename sample_config.json to config.json with proper variables")
+    sys.exit()
 
 with open('config.json') as f:
     data             = json.load(f)
