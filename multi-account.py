@@ -55,6 +55,8 @@ if git_email:
 
 if not os.path.exists('sessions'):
     os.mkdir('sessions')
+elif os.path.exists('sessions/robot.session'):
+    os.remove('sessions/robot.session')
 
 
 m = """

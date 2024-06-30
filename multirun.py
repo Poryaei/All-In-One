@@ -53,6 +53,9 @@ if git_email:
     subprocess.run(command)
     subprocess.run(command2)
 
+if os.path.exists('sessions/robot.session'):
+    os.remove('sessions/robot.session')
+
 client = TelegramClient('sessions/robot', api_id, api_hash)
 client.start(bot_token=bot_token)
 
