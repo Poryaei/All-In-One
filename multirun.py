@@ -351,6 +351,8 @@ Coded By: @uPaSKaL | GitHub: [Poryaei](https://github.com/Poryaei)
         sys.exit()
 
     elif text == '/update':
+        if not git_email:
+            return await event.reply('Fill `git_email` & `git_username` values in config.json for this command to work')
         m = await event.reply('Checking update...⌛')
         try:
             out = subprocess.check_output(["git", "pull"]).decode("UTF-8")
