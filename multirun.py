@@ -61,7 +61,7 @@ client.start(bot_token=bot_token)
 
 print("Client is ready")
 
-await client.send_message(admin, "Updated and restarted ✅")
+client.send_message(admin, "Updated and restarted ✅")
 
 if os.path.exists('start.txt'):
     os.unlink('start.txt')
