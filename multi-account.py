@@ -1,5 +1,7 @@
 import asyncio
 import json, os, time, aiocron, psutil, sys, subprocess, platform
+from os import execvp
+from sys import executable
 
 from scripts.tapswap    import TapSwap
 from scripts.hamster    import HamsterCombat
@@ -21,6 +23,10 @@ from concurrent.futures import ThreadPoolExecutor
 logger   = setup_custom_logger("mainapp")
 executor = ThreadPoolExecutor(15)
 
+if not os.path.exists('config.json'):
+    print("Edit and rename sample_config.json to config.json with proper variables")
+    sys.exit()
+
 with open('config.json') as f:
     data             = json.load(f)
     api_id           = data['api_id']
@@ -39,10 +45,19 @@ with open('config.json') as f:
         
     cexio_ref_code   = data['cexio_ref_code']
     blum_ref_code    = data['blum_ref_code']
-    
+    git_email        = data['git_email']
+    git_username     = data['git_username']
+
+if git_email:
+    command = ['git', 'config', '--global', 'user.email', git_email]
+    command2 = ['git', 'config', '--global', 'user.name', git_username]
+    subprocess.run(command)
+    subprocess.run(command2)
 
 if not os.path.exists('sessions'):
     os.mkdir('sessions')
+elif os.path.exists('sessions/robot.session'):
+    os.remove('sessions/robot.session')
 
 
 m = """
@@ -251,7 +266,9 @@ def get_server_usage():
 
 def split_string_by_length(input_string, chunk_length):
     return [input_string[i:i + chunk_length] for i in range(0, len(input_string), chunk_length)]
-        
+
+async def restart():
+    execvp(executable, [executable, "multirun.py"])      
 
 async def answer(event):
     global db, db_steps
@@ -365,6 +382,20 @@ Coded By: @uPaSKaL | GitHub: [Poryaei](https://github.com/Poryaei)
     elif text == '/stop':
         await event.reply('👋')
         sys.exit()
+    
+    elif text == '/update':
+        if not git_email:
+            return await event.reply('Fill `git_email` & `git_username` values in config.json for this command to work')
+        m = await event.reply('Checking update...⌛')
+        try:
+            out = subprocess.check_output(["git", "pull"]).decode("UTF-8")
+            if "Already up to date." in str(out):
+                return await m.edit("Its already up-to date!")
+            await m.edit(f"```{out}```")
+        except Exception as e:
+            return await m.edit(str(e))
+        await event.reply("**Updated with default branch, restarting now...**")
+        await restart()
 
 
 @aiocron.crontab('*/1 * * * *')

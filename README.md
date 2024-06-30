@@ -46,7 +46,8 @@ Follow these steps to install and set up the automatic clicker on Telegram:
    - Ensure you have the phone numbers for each account that will be used to operate the clicker.
 
 2. **Edit the Configuration File**
-   - Open the `config.json` file and edit the necessary parameters.
+   - Open the `sample_config.json` file and edit the necessary parameters.
+   - After editing rename `sample_config.json` to `config.json`
    - Example `config.json`:
      ```json
      {
@@ -64,7 +65,9 @@ Follow these steps to install and set up the automatic clicker on Telegram:
          "max_energy_level": 10,
          "max_tap_level": 10,
          "cexio_ref_code": "1716310450941700",
-         "blum_ref_code": "AacKuW83Rh"
+         "blum_ref_code": "AacKuW83Rh",
+         "git_email": "",
+         "git_username": ""
      }
      ```
    - **Note:** 
@@ -104,10 +107,14 @@ To manage multiple accounts, you need to set up a bot token obtained from BotFat
          "max_energy_level": 10,
          "max_tap_level": 10,
          "cexio_ref_code": "1716310450941700",
-         "blum_ref_code": "AacKuW83Rh"
+         "blum_ref_code": "AacKuW83Rh",
+         "git_email": "",
+         "git_username": ""
      }
      ```
    - **Note:** The bot token is only required for multi-account management. Ensure it is correctly inserted to avoid any issues.
+
+3. if you want the /update command to work (update bot to the latest version from the bot itself) fill `git_email` and `git_username`
 
 ## Running the Script
 
