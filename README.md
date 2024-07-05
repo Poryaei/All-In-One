@@ -1,6 +1,6 @@
 # All-In-One Automatic Clicker
 
-An automatic clicker for the (Hamster ~ TapSwap ~ CexIO ~ Blum) bots.
+An automatic clicker for the (Hamster ~ TapSwap ~ CexIO ~ Blum ~ Rocky Rabbit) bots.
 
 ## Bot Status
 
