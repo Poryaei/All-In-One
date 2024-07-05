@@ -1,12 +1,12 @@
 import asyncio
-import json, os, time, aiocron, psutil, sys, subprocess, platform
+import json, os, time, aiocron, psutil, sys, subprocess, platform, datetime
 
 from scripts.tapswap    import TapSwap
 from scripts.hamster    import HamsterCombat
 from scripts.cexio      import Cex_IO
 from scripts.logger     import setup_custom_logger
 from scripts.cache_data import SimpleCache
-from scripts.tg_client  import create_client, reload_sessions
+from scripts.tg_client  import create_client, reload_sessions, reload_rabbit_url
 
 from telethon.sync import TelegramClient
 from telethon import functions, types, events, Button, errors
@@ -86,13 +86,12 @@ if os.path.exists('start.txt'):
 
 db = {
     'click': 'on',
-    'start': False
+    'start': False,
+    'rabbit_update': 0
 }
 clickers = {}
 url_files = [f for f in os.listdir('cache') if f.endswith('.json')]
-
-
-VERSION    = "1.1"
+VERSION    = "1.2"
 START_TIME = time.time()
 
 def convert_time(uptime):
@@ -172,45 +171,83 @@ def buy_card(item: str):
 
 
 
-def total_balance():    
+def total_balance():
+    def safe_get_balance(cache_db, key, default=0.0):
+        try:
+            return float(cache_db.get(key))
+        except (TypeError, ValueError):
+            return default
+
     tapswap = 0
     hamster = 0
-    cexio   = 0
-    blum    = 0
+    cexio = 0
+    blum = 0
+    rabbit = 0
     hamster_earn_per_hour = 0
-    data = ""
-    
+
     for file in url_files:
         client_id = file.split('.json')[0]
         cache_db = SimpleCache(client_id)
+
+        tapswap += safe_get_balance(cache_db, 'tapswap_balance')
+        hamster += safe_get_balance(cache_db, 'hamster_balance')
+        hamster_earn_per_hour += safe_get_balance(cache_db, 'hamster_earn_per_hour')
+        cexio += safe_get_balance(cache_db, 'cex_io_balance')
+        blum += safe_get_balance(cache_db, 'blum_balance')
+        rabbit += safe_get_balance(cache_db, 'rabbit_balance')
         
+    return tapswap, hamster, cexio, hamster_earn_per_hour, blum, rabbit
+
+def account_balance(client_id):
+    def safe_get_balance(cache_db, key, default=0.0):
         try:
-            tapswap += float(cache_db.get('tapswap_balance'))
-            data += f"User: `{client_id}` | 🟣 TapSwap: `{convert_big_number(float(cache_db.get('tapswap_balance')))}`\n"
-        except:
-            pass
+            return float(cache_db.get(key))
+        except (TypeError, ValueError):
+            return default
+
+    tapswap = 0
+    hamster = 0
+    cexio = 0
+    blum = 0
+    rabbit = 0
+    hamster_earn_per_hour = 0
+
+
+    cache_db = SimpleCache(client_id)
+
+    tapswap += safe_get_balance(cache_db, 'tapswap_balance')
+    hamster += safe_get_balance(cache_db, 'hamster_balance')
+    hamster_earn_per_hour += safe_get_balance(cache_db, 'hamster_earn_per_hour')
+    cexio += safe_get_balance(cache_db, 'cex_io_balance')
+    blum += safe_get_balance(cache_db, 'blum_balance')
+    rabbit += safe_get_balance(cache_db, 'rabbit_balance')
+    account_data_json = cache_db.get('account_data')
+    account_data = json.loads(account_data_json)
         
+    return tapswap, hamster, cexio, hamster_earn_per_hour, blum, rabbit, account_data
+
+def account_list():
+    global url_files
+    url_files = [f for f in os.listdir('cache') if f.endswith('.json')]
+    accounts = []
+
+    for file in url_files:
         try:
-            hamster += float(cache_db.get('hamster_balance'))
-            hamster_earn_per_hour += float(cache_db.get('hamster_earn_per_hour'))
-            data += f"User: `{client_id}` | 🐹 Hamster: `{convert_big_number(float(cache_db.get('hamster_balance')))}`\n"
-            data += f"User: `{client_id}` | 🐹 Hamster PPH: `{convert_big_number(float(cache_db.get('hamster_earn_per_hour')))}`\n"
+            client_id = file.split('.json')[0]
+            cache_db = SimpleCache(client_id)
+            
+            account_data_json = cache_db.get('account_data')
+            account_data = json.loads(account_data_json)
+            first_name = account_data.get('first_name', 'Unknown')
+            
+            accounts.append(Button.inline(first_name, f'user_{client_id}'))
         except:
-            pass
-        
-        try:
-            cexio += float(cache_db.get('cex_io_balance'))
-            data += f"User: `{client_id}` | ❣️Cex IO: `{convert_big_number(float(cache_db.get('cex_io_balance')))}`\n\n"
-        except:
-            pass
-        
-        try:
-            blum += float(cache_db.get('blum_balance'))
-            data += f"User: `{client_id}` | ⚫️ Blum: `{convert_big_number(float(cache_db.get('blum_balance')))}`\n\n"
-        except:
-            pass
-        
-    return tapswap, hamster, cexio, hamster_earn_per_hour, blum
+            continue
+
+    grouped_buttons = [accounts[i:i + 3] for i in range(0, len(accounts), 3)]
+    grouped_buttons.append([Button.inline('🔙', 'back')])
+    return grouped_buttons
+
 
 def convert_uptime(uptime):
     hours   = int(uptime // 3600)
@@ -252,6 +289,8 @@ def get_server_usage():
 def split_string_by_length(input_string, chunk_length):
     return [input_string[i:i + chunk_length] for i in range(0, len(input_string), chunk_length)]
         
+def timestamp_to_datetime(timestamp):
+    return datetime.datetime.fromtimestamp(timestamp)
 
 async def answer(event):
     global db, db_steps
@@ -259,7 +298,7 @@ async def answer(event):
     text:str = event.raw_text
     user_id = event.sender_id
     
-    if user_id < 1 or not user_id in [admin]:
+    if user_id and user_id < 1 or not user_id in [admin]:
         return
     
     if text == '/start':
@@ -296,21 +335,26 @@ async def answer(event):
         m = await event.reply('It might take some time ⏳.')
         buy_card(item)
         await m.edit('🚀 Your request has been sent.')
+    
+    elif text == '/accounts':
+        await event.reply('🍑 Accounts list:\n\n', buttons=account_list())
         
     elif text == '/balance':
         m = await event.reply('Calculating the inventory. It might take some time ⏳.')
-        tapswap, hamster, cexio, hamster_earn_per_hour, blum = total_balance()
-        await m.edit(f"""Total number of clickers: `{len(url_files)}`
-Total inventories:
+        tapswap, hamster, cexio, hamster_earn_per_hour, blum, rabbit = total_balance()
+        btn = [
+            [Button.inline('🤖 TapSwap 🤖', 'tapswap'), Button.inline(f'{convert_big_number(tapswap)}', 'tapswap')],
+            [Button.inline('🐹 Hamster 🐹', 'hamster'), Button.inline(f'{convert_big_number(hamster)}', 'hamster')],
+            [Button.inline('🔗 Cex  IO 🔗', 'cexio'), Button.inline(f'{convert_big_number(cexio)}', 'cexio')],
+            [Button.inline('⚫️ Blum ⚫️', 'blum'), Button.inline(f'{convert_big_number(blum)}', 'blum')],
+            [Button.inline('🐰 Rabbit 🐰', 'rabbit'), Button.inline(f'{convert_big_number(rabbit)}', 'rabbit')],
+            [Button.inline('📊 Accounts 📊', 'back_accountlist')],
+        ]
+        await m.edit(f"""**Total number of clickers**: `{len(url_files)}`
 
-🤖 Total TapSwap: `{convert_big_number(tapswap)}`
-🐹 Total Hamster: `{convert_big_number(hamster)}`
-🔗 Total CEX IO:  `{convert_big_number(cexio)}`
-⚫️ Total Blum:  `{convert_big_number(blum)}`
-
-🐹 Total Hamster Earn Per Hour:  `{convert_big_number(hamster_earn_per_hour)}`
-🐹 Total Hamster Earn Per Day:   `{convert_big_number(hamster_earn_per_hour*24)}`
-""")
+🐹 **Total Hamster Earn Per Hour** :  `{convert_big_number(hamster_earn_per_hour)}`
+🐹 **Total Hamster Earn Per Day**    :   `{convert_big_number(hamster_earn_per_hour*24)}`
+""", buttons=btn)
     
     elif text == '/help':
         su = get_server_usage()
@@ -337,13 +381,16 @@ Just a powerful clicker and non-stop bread 🚀
 
 🤖 Global commands:
 
-🟢 `/click on` - Start collecting (Hamster ~ TapSwap ~ Cex IO)
-🔴 `/click off` - Stop collecting (Hamster ~ TapSwap ~ Cex IO)
+📊 `/accounts` - Accounts List
+
+🟢 `/click on` - Start collecting
+🔴 `/click off` - Stop collecting
 
 🟡 `/ping` - Check if the robot is online
 🟢 `/help` - Display help menu
 ⚪️ `/balance` - Show Total balance
 ⚫️ `/stop` - Stop the robot
+
 
 
 
@@ -358,6 +405,7 @@ Just a powerful clicker and non-stop bread 🚀
 Coded By: @uPaSKaL | GitHub: [Poryaei](https://github.com/Poryaei)
 
                           """)
+        
 
     elif text == '/version':
         await event.reply(f"ℹ️ Version: {VERSION}\n\nCoded By: @uPaSKaL | GitHub: [Poryaei](https://github.com/Poryaei)")
@@ -365,6 +413,49 @@ Coded By: @uPaSKaL | GitHub: [Poryaei](https://github.com/Poryaei)
     elif text == '/stop':
         await event.reply('👋')
         sys.exit()
+
+async def callback(event):
+    data:str = event.data.decode()
+    user_id = event.sender_id
+    
+    if user_id and user_id < 1 or not user_id in [admin]:
+        return
+    
+    if data == 'back':
+        await event.delete()
+        await client.send_message(int(user_id), "👋 Welcome to the Clickers Management Bot! 🤖\n\nTo view the menu, send the command /help. 😉")
+    
+    elif data == 'back_accountlist':
+        await event.edit('🍑 Accounts list:\n\n', buttons=account_list())
+    
+    elif data.startswith('user_'):
+        client_id = data.split('user_')[1]
+        tapswap, hamster, cexio, hamster_earn_per_hour, blum, rabbit, account_data = account_balance(client_id)
+        btn = [
+            [Button.inline('back', b'back_accountlist')]
+        ]
+        await event.edit(f"""
+👤 **Account**:
+🌟 `Name`              : **{account_data['first_name']}**
+❤️ `UserId`         : `{account_data['id']}`
+👥 `Username`    : @{account_data['username']}
+📞 `Phone`           : +{account_data['phone']}
+
+🐹 **Hamster**:
+💰 `Balance`     : `{convert_big_number(hamster)}`
+📈 `PPH`              : `{convert_big_number(hamster_earn_per_hour)}`
+
+🔗 **Cex IO**:
+💰 `Balance`     : `{convert_big_number(cexio)}`
+
+⚫️ **Blum**:
+💰 `Balance`     : `{convert_big_number(blum)}`
+
+🐰 **Rabbit**:
+💰 `Balance`     : `{convert_big_number(rabbit)}`
+""", buttons=btn)
+        
+    
 
 
 @aiocron.crontab('*/1 * * * *')
@@ -376,23 +467,39 @@ async def send_taps():
         python_command = "python"
     else:
         python_command = "python3"
+    
+    if time.time() - db['rabbit_update'] > 60*60*2:
+        try:
+            command = " ".join([python_command, "update_url.py"])
+            subprocess.Popen(command, shell=True)
+            reload_rabbit_url()
+            db['rabbit_update'] = time.time()
+        except Exception as e:
+            await client.send_message(admin, str(e))
 
     if not os.path.exists('start.txt'):
         command = " ".join([python_command, "send_taps.py"])
         subprocess.Popen(command, shell=True)
-        await client.send_message(admin, "Start Tapping ⛏️")
-    
-    
+
+
+
 
 @aiocron.crontab('0 */12 * * *')
 async def do_tasks():
     hamster_do_tasks()
+    
 
 
 @client.on(events.NewMessage())
 async def handler(event):
     asyncio.create_task(
         answer(event)
+    )
+
+@client.on(events.CallbackQuery())
+async def handler(event):
+    asyncio.create_task(
+        callback(event)
     )
 
 
