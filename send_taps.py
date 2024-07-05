@@ -1,12 +1,13 @@
 import os
 import json, time
 
-from scripts.tapswap    import TapSwap
-from scripts.hamster    import HamsterCombat
-from scripts.cexio      import Cex_IO
-from scripts.blum       import Blum
-from scripts.logger     import setup_custom_logger
-from scripts.cache_data import SimpleCache
+from scripts.tapswap     import TapSwap
+from scripts.hamster     import HamsterCombat
+from scripts.cexio       import Cex_IO
+from scripts.blum        import Blum
+from scripts.rockyrabbit import RockyRabbitAPI
+from scripts.logger      import setup_custom_logger
+from scripts.cache_data  import SimpleCache
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -30,6 +31,7 @@ with open('config.json') as f:
     tapswap_clicker  = data['tapswap_clicker']
     hamster_clicker  = data['hamster_clicker']
     blum_clicker     = data['blum_clicker']
+    rabbit_clicker   = data['rabbit_clicker']
         
     cexio_ref_code   = data['cexio_ref_code']
     blum_ref_code    = data['blum_ref_code']
@@ -46,6 +48,7 @@ def connect(file):
         hamster_url = cache_db.get('hamster_url')
         cex_io_url  = cache_db.get('cex_io_url')
         blum_url    = cache_db.get('blum_url')
+        rabbit_url  = cache_db.get('rabbit_url')
         
         if tapswap_url and tapswap_clicker == "on":
             start_tapswap_client(file, client_id, cache_db, tapswap_url, auto_upgrade, max_charge_level, max_energy_level, max_tap_level)
@@ -58,6 +61,9 @@ def connect(file):
         
         if blum_url and blum_clicker == "on":
             start_blum_client(file, client_id, cache_db, blum_url, blum_ref_code)
+        
+        if rabbit_url and rabbit_clicker == "on":
+            start_rabbit_client(file, client_id, cache_db, rabbit_url)
         
     except Exception as e:
         logger.error(f'Error in building client[{file}]: ' + str(e))
@@ -120,6 +126,28 @@ def start_blum_client(file, client_id, cache_db, blum_url, referralToken):
         cache_db.set('blum_balance', blum_client.balance()['availableBalance'])
     except Exception as e:
         logger.error(f'Error in building blum[{file}]: ' + str(e))
+
+def start_rabbit_client(file, client_id, cache_db:SimpleCache, rabbit_url):
+    next_rabbit_click = cache_db.get('next_rabbit_click')
+    if next_rabbit_click and time.time() < next_rabbit_click:
+        return
+    try:
+        cache_db.set('next_rabbit_click', time.time() + (60*15))
+        if time.time() - cache_db.get('rabbit_url_time') > 60*60*3:
+            return
+        rabbit_client = RockyRabbitAPI(rabbit_url, client_id)
+        if not cache_db.exists('rabbit_init'):
+            rabbit_client.account_init()
+            cache_db.set('rabbit_init', time.time())
+        
+        time_for_recharge = rabbit_client.tap_all()
+        if time_for_recharge == 'init data':
+            return
+        rabbit_client.auto_upgrade()
+        cache_db.set('next_rabbit_click', time.time() + time_for_recharge)
+        cache_db.set('rabbit_balance', rabbit_client.balance())
+    except Exception as e:
+        logger.error(f'Error in building rabbit[{file}]: ' + str(e))
 
 def start_clickers():
     tasks = []
