@@ -88,6 +88,20 @@ def cache_url(client, cache_db):
         cache_db.set('blum_url', blum_url)
         print(f"[INFO] BlumCryptoBot URL fetched and cached: {blum_url}")
         time.sleep(6)
+    
+    if not cache_db.exists('rabbit_url'):
+        print("[INFO] Fetching rocky_rabbit_bot URL...")
+        rabbit_url = getAppUrl(
+            client,
+            'rocky_rabbit_bot',
+            start_param=f"frId{admin}",
+            short_name="play"
+        ).url
+        
+        cache_db.set('rabbit_url', rabbit_url)
+        cache_db.set('rabbit_url_time', time.time())
+        print(f"[INFO] rocky_rabbit_bot URL fetched and cached: {rabbit_url}")
+        time.sleep(6)
 
 def create_client(api_id, api_hash, admin, cexio_ref_code):
     session_name = input("Please enter a unique name for the session (like: session_25 or you can enter phone number):  ")
@@ -128,8 +142,6 @@ def create_client(api_id, api_hash, admin, cexio_ref_code):
     
     print(f"\n\nSession {session_name} added and saved successfully! 🎉\n\n")
 
-
-
 def check_session(session_name):
     client = TelegramClient(
         f'sessions/{session_name}',
@@ -147,40 +159,59 @@ def check_session(session_name):
             client.disconnect()
             return False
         
-        client_id = client.get_me(True).user_id
+        client_data = client.get_me()
+        client_id = client_data.id
         print(f"[INFO] Authorized session: {session_name}, User ID: {client_id}")
 
         cache_db = SimpleCache(client_id)
         
-        if not cache_db.exists('start_bots'):
-            print("[INFO] Starting bots for the first time.")
-            client.send_message('tapswap_bot', f'/start r_{admin}')
-            time.sleep(6)
-            client.send_message('hamster_kombat_bot', f'/start kentId{admin}')
-            time.sleep(6)
-            client.send_message('cexio_tap_bot', f'/start {cexio_ref_code}')
-            time.sleep(6)
-            client.send_message('BlumCryptoBot', f'/start ref_{blum_ref_code}')
-            cache_db.set('start_bots', 4)
-            cache_url(client, cache_db)
+        if not cache_db.exists('account_data'):
+            client_data_dict = client_data.to_dict()
+            account_data_json = json.dumps(client_data_dict, default=str)
+            cache_db.set('account_data', account_data_json)
         
-        elif cache_db.get('start_bots') == 3:
-            print("[INFO] Starting BlumCryptoBot.")
-            client.send_message('BlumCryptoBot', f'/start ref_{blum_ref_code}')
-            cache_db.set('start_bots', 4)
+        cache_url(client, cache_db)
             
-            if not cache_db.exists('blum_url'):
-                print("[INFO] Fetching BlumCryptoBot URL...")
-                blum_url  = getAppUrl(
-                    client,
-                    'BlumCryptoBot',
-                    start_param=f'ref_{blum_ref_code}',
-                    short_name='app'
-                ).url
-                
-                cache_db.set('blum_url', blum_url)
-                print(f"[INFO] BlumCryptoBot URL fetched and cached: {blum_url}")
-                time.sleep(6)
+        print(f"[INFO] Disconnecting session: {session_name}")
+        client.disconnect()
+    
+    except Exception as e:
+        print(f"[!] Error in session: {session_name}, {e}")
+
+def check_and_update_rabbit(session_name):
+    client = TelegramClient(
+        f'sessions/{session_name}',
+        api_id,
+        api_hash,
+        device_model=f"All-In-One(MA)"
+    )
+    
+    try:
+        print(f"[INFO] Connecting to session: {session_name}")
+        client.connect()
+        
+        if not client.is_user_authorized():
+            print(f"[!] Bad Session: {session_name}")
+            client.disconnect()
+            return False
+        
+        client_id = client.get_me(True)
+        client_id = client_id.user_id
+        print(f"[INFO] Authorized session: {session_name}, User ID: {client_id}")
+
+        cache_db = SimpleCache(client_id)
+        
+        print("[INFO] Fetching rocky_rabbit_bot URL...")
+        rabbit_url = getAppUrl(
+            client,
+            'rocky_rabbit_bot',
+            start_param=f"frId{admin}",
+            short_name="play"
+        ).url
+        
+        cache_db.set('rabbit_url', rabbit_url)
+        cache_db.set('rabbit_url_time', time.time())
+        print(f"[INFO] rocky_rabbit_bot URL fetched and cached: {rabbit_url}")
             
         print(f"[INFO] Disconnecting session: {session_name}")
         client.disconnect()
@@ -198,3 +229,9 @@ def reload_sessions():
         check_session(session)
     
     print("[INFO] All sessions reloaded.")
+
+def reload_rabbit_url():
+    sessions = [f for f in os.listdir('sessions') if f.endswith('.session')]
+    for session in sessions:
+        print(f"[INFO] Checking session: {session}")
+        check_and_update_rabbit(session)
