@@ -49,7 +49,7 @@ class HamsterCombat:
         for _ in range(self.maxtries):
             try:
                 response = requests.post(
-                    'https://api.hamsterkombat.io/auth/auth-by-telegram-webapp',
+                    'https://api.hamsterkombatgame.io/auth/auth-by-telegram-webapp',
                     json=payload
                 ).json()
                 self.token = response['authToken']
@@ -73,7 +73,7 @@ class HamsterCombat:
         for _ in range(self.maxtries):
             try:
                 response = requests.post(
-                    f'https://api.hamsterkombat.io{endpoint}',
+                    f'https://api.hamsterkombatgame.io{endpoint}',
                     json=payload,
                     headers=self.headers
                 ).json()
@@ -189,6 +189,18 @@ class HamsterCombat:
         best_upgrades.sort(key=lambda upgrade: upgrade['x_day_return'], reverse=True)
         return best_upgrades[:3]
     
+    def find_best_upgrades_2(self, upgrades, time_horizon=2):
+        best_upgrades = []
+        for upgrade in upgrades:
+            if upgrade['isAvailable'] and not upgrade['isExpired']:
+                x_day_return = upgrade['profitPerHourDelta'] * 24 * 1
+                upgrade['x_day_return'] = x_day_return
+                best_upgrades.append(upgrade)
+        
+        # Sort by x_day_return (profit) first, then by price (cost) if profits are equal
+        best_upgrades.sort(key=lambda upgrade: (-upgrade['x_day_return'], upgrade['price']))
+        return best_upgrades[:5]
+    
     def buy_bests(self):
         response = self.post_request('/clicker/upgrades-for-buy')
         if response:
@@ -237,6 +249,88 @@ class HamsterCombat:
                     
             self.logger.debug(f'[~] Updated:  {len(updates)}')
             return updates
+    
+    def buy_bests2(self, target_profit):
+        response = self.post_request('/clicker/upgrades-for-buy')
+        
+        if not response or 'upgradesForBuy' not in response:
+            return "No upgrades available"
+        
+        upgrades = response['upgradesForBuy']
+        
+        for upgrade in upgrades:
+            if upgrade['price'] != 0 and upgrade['isExpired'] != True and upgrade['isAvailable'] == True and (('cooldownSeconds' in upgrade and upgrade['cooldownSeconds'] < 1) or not 'cooldownSeconds' in upgrade):
+                upgrade['profit_to_cost'] = upgrade['profitPerHourDelta'] / upgrade['price']
+            else:
+                upgrade['profit_to_cost'] = 0
+        
+        upgrades.sort(key=lambda x: x['profit_to_cost'], reverse=True)
+        
+        selected_upgrades = []
+        total_profit = 0
+        total_cost = 0
+        
+        for upgrade in upgrades:
+            if total_profit >= target_profit:
+                break
+            selected_upgrades.append(upgrade)
+            total_profit += upgrade['profitPerHourDelta']
+            total_cost += upgrade['price']
+        
+        if total_profit < target_profit:
+            return "Not enough profit available from upgrades"
+        
+        for upgrade in selected_upgrades:
+            d = self.buy_upgrade(upgrade['id'])
+        
+        return {
+            "selected_upgrades": selected_upgrades,
+            "total_profit": total_profit,
+            "total_cost": total_cost
+        }
+    
+    def buy_bests_by_budget(self, total_budget):
+        response = self.post_request('/clicker/upgrades-for-buy')
+        
+        if not response or 'upgradesForBuy' not in response:
+            return "No upgrades available"
+        
+        upgrades = response['upgradesForBuy']
+        
+        for upgrade in upgrades:
+            if (upgrade['price'] != 0 and upgrade['isExpired'] != True and 
+                upgrade['isAvailable'] == True and 
+                (('cooldownSeconds' in upgrade and upgrade['cooldownSeconds'] < 1) or 
+                not 'cooldownSeconds' in upgrade)):
+                upgrade['profit_to_cost'] = upgrade['profitPerHourDelta'] / upgrade['price']
+            else:
+                upgrade['profit_to_cost'] = -1
+        
+        upgrades.sort(key=lambda x: x['profit_to_cost'], reverse=True)
+        
+        selected_upgrades = []
+        total_profit = 0
+        total_cost = 0
+        
+        for upgrade in upgrades:
+            if total_cost + upgrade['price'] > total_budget:
+                continue
+            if upgrade['profit_to_cost'] >= 0:
+                selected_upgrades.append(upgrade)
+                total_profit += upgrade['profitPerHourDelta']
+                total_cost += upgrade['price']
+        
+        if not selected_upgrades:
+            return "Not enough budget to buy any upgrade"
+        
+        for upgrade in selected_upgrades:
+            d = self.buy_upgrade(upgrade['id'])
+        
+        return {
+            "selected_upgrades": selected_upgrades,
+            "total_profit": total_profit,
+            "total_cost": total_cost
+        }
     
     def update_all(self):
         while len(self.buy_bests()) > 0:
