@@ -172,7 +172,7 @@ class HamsterCombat:
         
 
     def tap(self, count: int, available_taps: int = 5500, timex=time.time() * 1000):
-        payload = {"count": count, "availableTaps": available_taps, "timestamp": timex}
+        payload = {"count": count, "availableTaps": available_taps, "timestamp": int(timex)}
         return self.post_request('/clicker/tap', payload)
     
     def check_boosts(self):
