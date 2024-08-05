@@ -2,12 +2,13 @@ import requests
 import urllib
 import time
 import random
-from datetime import datetime, timedelta
+import base64
 
+from datetime import datetime, timedelta
 from scripts.logger import setup_custom_logger
 
 class HamsterCombat:
-    def __init__(self, url, max_days_for_return: int, client_id:int=1) -> None:
+    def __init__(self, url, max_days_for_return: int, client_id: int = 1) -> None:
         self.url = url
         self.mining = False
         self.maxtries = 10
@@ -32,7 +33,9 @@ class HamsterCombat:
         }
         
         self.select_exchange()
-
+        
+        self.do_shits()
+        
     def wait_time(self, max_taps: int, available_taps: int, taps_recover_per_sec: int):
         return round((max_taps - available_taps) / taps_recover_per_sec)
 
@@ -114,6 +117,19 @@ class HamsterCombat:
         if 'dailyCipher' in response and response['dailyCipher']['isClaimed']:
             return True
         return response
+    
+    def cliam_minigame_keys(self, uid):
+        self.post_request('/clicker/start-keys-minigame')
+        
+        time.sleep(random.randint(10, 20))
+        
+        code = random.randint(11111111, 99999999)
+        data = f"00{code}|{uid}"
+        payload = {
+            'cipher': base64.b64encode(data.encode()).decode().replace('=', '')
+        }
+        
+        self.post_request('/clicker/claim-daily-keys-minigame', payload)
 
     def buy_boost(self, boost_id: str, timex=time.time() * 1000):
         payload = {"boostId": boost_id, "timestamp": timex}
@@ -126,19 +142,37 @@ class HamsterCombat:
     def balance_coins(self):
         response = self.post_request('/clicker/sync')
         if response:
-            self.earn_passive_per_hour    = response['clickerUser']['earnPassivePerHour']
+            self.earn_passive_per_hour = response['clickerUser']['earnPassivePerHour']
             self.earn_passive_per_seconds = response['clickerUser']['earnPassivePerSec']
             return response['clickerUser']['balanceCoins']
         return False
 
+    def decode_cipher(self, cipher: str) -> str:
+        encoded = cipher[:3] + cipher[4:]
+        return base64.b64decode(encoded).decode('utf-8')
+    
     def info(self):
         response = self.post_request('/clicker/sync')
         if response:
             return response['clickerUser']
         return False
+    
+    def do_shits(self):
+        uid = self.info()['id']
+        response = self.post_request('/clicker/config')
+        dailyCipher = response.get('dailyCipher', False)
+        dailyKeysMiniGame = response.get('dailyKeysMiniGame', False)
+        
+        if dailyCipher and dailyCipher.get('isClaimed', True) == False:
+            cipher = self.decode_cipher(dailyCipher.get('cipher'))
+            self.claim_daily_cipher(cipher)
+        
+        if dailyKeysMiniGame and dailyKeysMiniGame.get('isClaimed', True) == False:
+            self.cliam_minigame_keys(uid)
+        
 
     def tap(self, count: int, available_taps: int = 5500, timex=time.time() * 1000):
-        payload = {"count": count, "availableTaps": available_taps, "timestamp": timex}
+        payload = {"count": count, "availableTaps": available_taps, "timestamp": int(timex)}
         return self.post_request('/clicker/tap', payload)
     
     def check_boosts(self):
@@ -173,7 +207,6 @@ class HamsterCombat:
                 return u['level'] - 1, u['price']
         return False
     
-    
     def find_best_upgrades(self, upgrades, time_horizon=2):
         best_upgrades = []
         for upgrade in upgrades:
@@ -189,25 +222,13 @@ class HamsterCombat:
         best_upgrades.sort(key=lambda upgrade: upgrade['x_day_return'], reverse=True)
         return best_upgrades[:3]
     
-    def find_best_upgrades_2(self, upgrades, time_horizon=2):
-        best_upgrades = []
-        for upgrade in upgrades:
-            if upgrade['isAvailable'] and not upgrade['isExpired']:
-                x_day_return = upgrade['profitPerHourDelta'] * 24 * 1
-                upgrade['x_day_return'] = x_day_return
-                best_upgrades.append(upgrade)
-        
-        # Sort by x_day_return (profit) first, then by price (cost) if profits are equal
-        best_upgrades.sort(key=lambda upgrade: (-upgrade['x_day_return'], upgrade['price']))
-        return best_upgrades[:5]
-    
     def buy_bests(self):
         response = self.post_request('/clicker/upgrades-for-buy')
         if response:
             upgrades = response['upgradesForBuy']
             updates = []
             balance = self.balance_coins()
-            for i in range(1, self.max_days_for_return+1):
+            for i in range(1, self.max_days_for_return + 1):
                 sorted_upgrades = self.find_best_upgrades(upgrades, i)
                 if len(sorted_upgrades) != 0:
                     break
@@ -217,7 +238,7 @@ class HamsterCombat:
                     self.logger.debug('[~] Continue update for cool down:  ' + upgrade_to_buy['id'])
                     continue
             
-                if upgrade_to_buy['condition'] != None and upgrade_to_buy['condition']['_type'] == 'ByUpgrade':
+                if upgrade_to_buy['condition'] and upgrade_to_buy['condition']['_type'] == 'ByUpgrade':
                     uid = upgrade_to_buy['condition']['upgradeId']
                     ulevel = upgrade_to_buy['condition']['level']
                     xlevel, xprice = self.find_upgrade_level(upgrades, uid)
@@ -231,7 +252,7 @@ class HamsterCombat:
                         updates.append(upgrade_to_buy)
                         balance -= upgrade_to_buy['price']
                     else:
-                        for i in range((ulevel-xlevel)+1):
+                        for i in range((ulevel - xlevel) + 1):
                             if balance < xprice:
                                 break
                             self.logger.debug('[~] Updating: ' + uid + ' | Need for: ' + upgrade_to_buy['id'])
@@ -250,128 +271,52 @@ class HamsterCombat:
             self.logger.debug(f'[~] Updated:  {len(updates)}')
             return updates
     
-    def buy_bests2(self, target_profit):
-        response = self.post_request('/clicker/upgrades-for-buy')
-        
-        if not response or 'upgradesForBuy' not in response:
-            return "No upgrades available"
-        
-        upgrades = response['upgradesForBuy']
-        
-        for upgrade in upgrades:
-            if upgrade['price'] != 0 and upgrade['isExpired'] != True and upgrade['isAvailable'] == True and (('cooldownSeconds' in upgrade and upgrade['cooldownSeconds'] < 1) or not 'cooldownSeconds' in upgrade):
-                upgrade['profit_to_cost'] = upgrade['profitPerHourDelta'] / upgrade['price']
-            else:
-                upgrade['profit_to_cost'] = 0
-        
-        upgrades.sort(key=lambda x: x['profit_to_cost'], reverse=True)
-        
-        selected_upgrades = []
-        total_profit = 0
-        total_cost = 0
-        
-        for upgrade in upgrades:
-            if total_profit >= target_profit:
-                break
-            selected_upgrades.append(upgrade)
-            total_profit += upgrade['profitPerHourDelta']
-            total_cost += upgrade['price']
-        
-        if total_profit < target_profit:
-            return "Not enough profit available from upgrades"
-        
-        for upgrade in selected_upgrades:
-            d = self.buy_upgrade(upgrade['id'])
-        
-        return {
-            "selected_upgrades": selected_upgrades,
-            "total_profit": total_profit,
-            "total_cost": total_cost
-        }
-    
-    def buy_bests_by_budget(self, total_budget):
-        response = self.post_request('/clicker/upgrades-for-buy')
-        
-        if not response or 'upgradesForBuy' not in response:
-            return "No upgrades available"
-        
-        upgrades = response['upgradesForBuy']
-        
-        for upgrade in upgrades:
-            if (upgrade['price'] != 0 and upgrade['isExpired'] != True and 
-                upgrade['isAvailable'] == True and 
-                (('cooldownSeconds' in upgrade and upgrade['cooldownSeconds'] < 1) or 
-                not 'cooldownSeconds' in upgrade)):
-                upgrade['profit_to_cost'] = upgrade['profitPerHourDelta'] / upgrade['price']
-            else:
-                upgrade['profit_to_cost'] = -1
-        
-        upgrades.sort(key=lambda x: x['profit_to_cost'], reverse=True)
-        
-        selected_upgrades = []
-        total_profit = 0
-        total_cost = 0
-        
-        for upgrade in upgrades:
-            if total_cost + upgrade['price'] > total_budget:
-                continue
-            if upgrade['profit_to_cost'] >= 0:
-                selected_upgrades.append(upgrade)
-                total_profit += upgrade['profitPerHourDelta']
-                total_cost += upgrade['price']
-        
-        if not selected_upgrades:
-            return "Not enough budget to buy any upgrade"
-        
-        for upgrade in selected_upgrades:
-            d = self.buy_upgrade(upgrade['id'])
-        
-        return {
-            "selected_upgrades": selected_upgrades,
-            "total_profit": total_profit,
-            "total_cost": total_cost
-        }
-    
     def update_all(self):
         while len(self.buy_bests()) > 0:
             pass
         return
     
     def tap_all(self):
-        
         taps = self.tap(1)
-        maxTaps           = taps['clickerUser']['maxTaps']
-        availableTaps     = taps['clickerUser']['availableTaps']
-        earnPerTap        = taps['clickerUser']['earnPerTap']
-        tapsRecoverPerSec = taps['clickerUser']['tapsRecoverPerSec']
-        self.sleep_time   = self.wait_time(maxTaps, availableTaps, tapsRecoverPerSec)
-        if maxTaps - availableTaps > 50:
+        if not taps:
+            self.logger.error("Failed to get initial tap data.")
+            return
+
+        user_data = taps.get('clickerUser', {})
+        max_taps = user_data.get('maxTaps', 0)
+        available_taps = user_data.get('availableTaps', 0)
+        earn_per_tap = user_data.get('earnPerTap', 0)
+        taps_recover_per_sec = user_data.get('tapsRecoverPerSec', 0)
+
+        self.sleep_time = self.wait_time(max_taps, available_taps, taps_recover_per_sec)
+        if max_taps - available_taps > 50:
             self.logger.debug('[~] Wait for full charge')
             return
-        
+
         total_taps = 0
-        
         self.logger.info('Start clicking process on Hamster 🐹')
-        
-        while availableTaps > 50:
-            
-            x = random.randint(90, 240)
-            if x > availableTaps:
-                x = availableTaps
-            
-            total_taps += x
-                        
-            taps          = self.tap(x, availableTaps)
-            availableTaps = taps['clickerUser']['availableTaps']
-            balanceCoins  = taps['clickerUser']['balanceCoins']
-            
+
+        while available_taps > 50:
+            taps_to_perform = min(random.randint(1000, 2000), available_taps)
+            total_taps += taps_to_perform
+
+            taps = self.tap(taps_to_perform, available_taps)
+            if not taps:
+                self.logger.error("Failed to perform taps.")
+                break
+
+            user_data = taps.get('clickerUser', {})
+            available_taps = user_data.get('availableTaps', 0)
+            balance_coins = user_data.get('balanceCoins', 0)
+
             time.sleep(random.randint(1, 2))
-        
-        self.logger.info(f'Clicks were successful! | Total clicks: {total_taps} | Balance growth: (+{total_taps*earnPerTap})')        
+
+        self.logger.info(f'Clicks were successful! | Total clicks: {total_taps} | Balance growth: (+{total_taps * earn_per_tap})')
+
         if self.check_boosts():
             return self.tap_all()
-        
-        return self.sleep_time + time.time() + (60*random.randint(1, 6))
-    
+
+        return self.sleep_time + time.time() + (60 * random.randint(1, 6))
+
     def time_to_recharge(self):
-        return self.sleep_time + (60*random.randint(1, 6))
+        return self.sleep_time + (60 * random.randint(1, 6))
