@@ -3,10 +3,20 @@ import urllib
 import time
 import random
 import base64
+import json
+
+import hashlib
+from datetime import timezone
+
+try:
+    with open('finger.json') as f:
+        finger_data = json.load(f)
+except:
+    finger_data = {}
 
 from datetime import datetime, timedelta
 from scripts.logger import setup_custom_logger
-
+                    
 class HamsterCombat:
     def __init__(self, url, max_days_for_return: int, client_id: int = 1) -> None:
         self.url = url
@@ -46,7 +56,7 @@ class HamsterCombat:
 
         payload = {
             "initDataRaw": urllib.parse.unquote(url).split('tgWebAppData=')[1].split('&tgWebAppVersion')[0],
-            "fingerprint": {}
+            "fingerprint": finger_data
         }
         
         for _ in range(self.maxtries):
@@ -97,6 +107,7 @@ class HamsterCombat:
         payload = {"taskId": task_id}
         return self.post_request('/clicker/check-task', payload)
 
+    
     def do_tasks(self):
         list_tasks = self.list_tasks()
         if not list_tasks or 'tasks' not in list_tasks:
@@ -105,9 +116,72 @@ class HamsterCombat:
             if task['id'] == 'streak_days' and not task['isCompleted']:
                 self.logger.debug('Doing daily tasks')
                 self.check_task()
+            
+            elif task['id'] == 'streak_days_special' and not task['isCompleted']:
+                self.logger.debug('Doing daily special tasks')
+                self.check_task(task['id'])
+    
+    def do_youtube_tasks(self):
+        tasks = self.list_tasks()
+        for task in tasks.get('tasks', []):
+            
+            if task.get('id', None) and task.get('id').startswith('hamster_youtube_'):
+                task_id = task.get('id')
+                if task.get('isCompleted', False) == False:
+                    self.check_task(task_id)
+                    self.logger.debug(f'Checking Youtube Task: {task_id}')
+            
+            elif task['id'] == 'streak_days_special' and not task['isCompleted']:
+                self.logger.debug('Doing daily special tasks')
+                self.check_task(task['id'])
+    
+    def buy_skins(self, skin, timex=time.time() * 1000):
+        payload = {"skinId": skin, "timestamp": int(timex)}
+        return self.post_request('/clicker/buy-skin', payload)
+    
+    def get_skins(self):
+        return self.post_request('/clicker/get-skin')
+    
+    def auto_buy_skins(self, max_skins=25):
+        response_sync = self.info()
+        all_skins     = self.get_skins()
+        current_skins = []
+        for skin in response_sync.get('skin', {}).get('available', []):
+            current_skins.append(skin['skinId'])
+        
+        for skin in all_skins.get('skins', []):
+            skin_id = skin['id']
+            
+            if skin['isAvailable'] and skin['isExpired'] == False:
+                skin_number = int(skin_id.split('skin')[1])
+                
+                if skin_number <= max_skins and not skin_id in current_skins:
+                    self.logger.debug(f'Buying Skin: {skin_id}')
+                    self.buy_skins(skin_id)
 
     def claim_daily_combo(self):
         return self.post_request('/clicker/claim-daily-combo')
+    
+    def get_game_cipher(self, start_number: str):
+        magic_index = int(start_number % (len(str(start_number)) - 2))
+        res = ""
+        for i in range(len(str(start_number))):
+            res += '0' if i == magic_index else str(int(random.random() * 10))
+        return res
+    
+    def minigame_cipher(self, uid, start_date, mini_game_id, sleep=40):
+        secret1 = "R1cHard_AnA1"
+        secret2 = "G1ve_Me_y0u7_Pa55w0rD"
+        start_dt = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
+        start_number = int(start_dt.replace(tzinfo=timezone.utc).timestamp())
+        cipher_score = (start_number + sleep) * 2
+        combined_string = f'{secret1}{cipher_score}{secret2}'
+        sig = hashlib.sha256(combined_string.encode()).digest()
+        sig = base64.b64encode(sig).decode()
+        game_cipher = self.get_game_cipher(start_number=start_number)
+        data = f'{game_cipher}|{uid}|{mini_game_id}|{cipher_score}|{sig}'
+        encoded_data = base64.b64encode(data.encode()).decode()
+        return encoded_data
 
     def claim_daily_cipher(self, cipher: str):
         payload = {"cipher": cipher}
@@ -118,18 +192,33 @@ class HamsterCombat:
             return True
         return response
     
-    def cliam_minigame_keys(self, uid):
-        self.post_request('/clicker/start-keys-minigame')
-        
+    def cliam_minigame_keys(self, uid, start_date, score=0, sleep=40):
+        r = self.post_request('/clicker/start-keys-minigame', payload={"miniGameId":"Candles"})
         time.sleep(random.randint(10, 20))
-        
-        code = random.randint(11111111, 99999999)
-        data = f"00{code}|{uid}"
         payload = {
-            'cipher': base64.b64encode(data.encode()).decode().replace('=', '')
+            'cipher': self.minigame_cipher(uid, start_date, 'Candles'),
+            'miniGameId': 'Candles'
         }
-        
-        self.post_request('/clicker/claim-daily-keys-minigame', payload)
+        response_json = self.post_request('/clicker/claim-daily-keys-minigame', payload)
+        profile_data = response_json.get('clickerUser') or response_json.get('found', {}).get('clickerUser', {})
+        daily_mini_game = response_json.get('dailyKeysMiniGames') or response_json.get('found', {}).get(
+            'dailyKeysMiniGames', {})
+        bonus = int(response_json.get('bonus') or response_json.get('found', {}).get('bonus', 0))
+        return profile_data, daily_mini_game, bonus
+    
+    def play_minigame_tiles(self, uid, start_date, score=0):    
+        r = self.post_request('/clicker/start-keys-minigame', payload={"miniGameId":"Tiles"})
+        time.sleep(random.randint(10, 20))
+        payload = {
+            'cipher': self.minigame_cipher(uid, start_date, 'Tiles', score),
+            'miniGameId': 'Tiles'
+        }
+        response_json = self.post_request('/clicker/claim-daily-keys-minigame', payload)
+        profile_data = response_json.get('clickerUser') or response_json.get('found', {}).get('clickerUser', {})
+        daily_mini_game = response_json.get('dailyKeysMiniGames') or response_json.get('found', {}).get(
+            'dailyKeysMiniGames', {})
+        bonus = int(response_json.get('bonus') or response_json.get('found', {}).get('bonus', 0))
+        return profile_data, daily_mini_game, bonus
 
     def buy_boost(self, boost_id: str, timex=time.time() * 1000):
         payload = {"boostId": boost_id, "timestamp": timex}
@@ -139,6 +228,10 @@ class HamsterCombat:
         payload = {"upgradeId": upgrade_id, "timestamp": timex}
         return self.post_request('/clicker/buy-upgrade', payload)
 
+    def buy_skins(self, skin, timex=time.time() * 1000):
+        payload = {"skinId": skin, "timestamp": int(timex)}
+        return self.post_request('/clicker/buy-skin', payload)
+    
     def balance_coins(self):
         response = self.post_request('/clicker/sync')
         if response:
@@ -151,6 +244,14 @@ class HamsterCombat:
         encoded = cipher[:3] + cipher[4:]
         return base64.b64decode(encoded).decode('utf-8')
     
+    def apply_promo(self, promo):
+        payload = {"promoCode": promo}
+        response = self.post_request('/clicker/apply-promo', payload)
+        
+        if response.get('error_code', False) == 'MaxKeysReceived':
+            return False
+        return True
+    
     def info(self):
         response = self.post_request('/clicker/sync')
         if response:
@@ -161,14 +262,29 @@ class HamsterCombat:
         uid = self.info()['id']
         response = self.post_request('/clicker/config')
         dailyCipher = response.get('dailyCipher', False)
-        dailyKeysMiniGame = response.get('dailyKeysMiniGame', False)
+        dailyKeysMiniGame = response.get('dailyKeysMiniGames', False)
+        dailyKeysMiniGame_Candles = dailyKeysMiniGame.get('Candles', False)
+        dailyKeysMiniGame_Tiles   = dailyKeysMiniGame.get('Tiles', False)
+        promos = response.get('promos', False)
         
         if dailyCipher and dailyCipher.get('isClaimed', True) == False:
             cipher = self.decode_cipher(dailyCipher.get('cipher'))
             self.claim_daily_cipher(cipher)
         
-        if dailyKeysMiniGame and dailyKeysMiniGame.get('isClaimed', True) == False:
-            self.cliam_minigame_keys(uid)
+        if dailyKeysMiniGame_Candles and dailyKeysMiniGame_Candles.get('isClaimed', True) == False:
+            self.cliam_minigame_keys(uid, dailyKeysMiniGame_Candles.get('startDate'))
+        
+        if dailyKeysMiniGame_Tiles and dailyKeysMiniGame_Tiles.get('remainPoints', 0) > 0:
+            remainPoints = dailyKeysMiniGame_Tiles.get('remainPoints', 0)
+            points       = max(random.randint(int(remainPoints/2), remainPoints), random.randint(850, 1111))
+            points       = min(remainPoints, points)
+            points       = min(random.randint(150, 350), points)
+            self.logger.debug(f"Playing Tiles | Points: {points} | Remain Points: {remainPoints}")
+            x, y, bonus = self.play_minigame_tiles(uid, dailyKeysMiniGame_Tiles.get('startDate'), score=points)
+            self.logger.debug(f"Playing Tiles | Bonus: {bonus} | Remain Points: {remainPoints - points}")
+        
+        self.do_youtube_tasks()
+        self.auto_buy_skins()
         
 
     def tap(self, count: int, available_taps: int = 5500, timex=time.time() * 1000):
@@ -204,6 +320,8 @@ class HamsterCombat:
     def find_upgrade_level(self, upgrades, upgrade_id):
         for u in upgrades:
             if u['id'] == upgrade_id:
+                if 'maxLevel' in u and u['isExpired']:
+                    return u['level'], u['price']
                 return u['level'] - 1, u['price']
         return False
     
@@ -232,7 +350,6 @@ class HamsterCombat:
                 sorted_upgrades = self.find_best_upgrades(upgrades, i)
                 if len(sorted_upgrades) != 0:
                     break
-            
             for upgrade_to_buy in sorted_upgrades:
                 if 'cooldownSeconds' in upgrade_to_buy and upgrade_to_buy['cooldownSeconds'] > 0:
                     self.logger.debug('[~] Continue update for cool down:  ' + upgrade_to_buy['id'])
@@ -242,7 +359,7 @@ class HamsterCombat:
                     uid = upgrade_to_buy['condition']['upgradeId']
                     ulevel = upgrade_to_buy['condition']['level']
                     xlevel, xprice = self.find_upgrade_level(upgrades, uid)
-                    if xlevel > ulevel:
+                    if xlevel >= ulevel:
                         if balance < upgrade_to_buy['price']:
                             continue
                         self.logger.debug('[~] Updating: ' + upgrade_to_buy['id'] + ' | x_day_return: ' + str(upgrade_to_buy['x_day_return']))
@@ -251,7 +368,7 @@ class HamsterCombat:
                             continue
                         updates.append(upgrade_to_buy)
                         balance -= upgrade_to_buy['price']
-                    else:
+                    elif xlevel < ulevel:
                         for i in range((ulevel - xlevel) + 1):
                             if balance < xprice:
                                 break
@@ -270,7 +387,8 @@ class HamsterCombat:
                     
             self.logger.debug(f'[~] Updated:  {len(updates)}')
             return updates
-    
+
+
     def update_all(self):
         while len(self.buy_bests()) > 0:
             pass
