@@ -1,5 +1,5 @@
 import os
-import json, time
+import json, time, random
 
 from scripts.tapswap     import TapSwap
 from scripts.hamster     import HamsterCombat
@@ -90,13 +90,18 @@ def start_hamster_client(file, client_id, cache_db, hamster_url, max_days_for_re
         return
     
     try:
-        cache_db.set('next_hamster_click', time.time() + (60*15))
+        cache_db.set('next_hamster_click', time.time() + (60*random.randint(60, 120)))
         hamster_client = HamsterCombat(hamster_url, max_days_for_return, client_id)
-        hamster_client.tap_all()
-        hamster_client.update_all()
+        # hamster_client.tap_all()
+        balance = hamster_client.balance_coins()
+        try:
+            hamster_client.update_all()
+        except Exception as e:
+            print(e)
+            pass
         next_tap = time.time() + hamster_client.time_to_recharge()
         cache_db.set('next_hamster_click', next_tap)
-        cache_db.set('hamster_balance', hamster_client.balance_coins())
+        cache_db.set('hamster_balance', balance)
         cache_db.set('hamster_earn_per_hour', hamster_client.earn_passive_per_hour)
     except Exception as e:
         logger.error(f'Error in building Hamster[{file}]: ' + str(e))
@@ -108,8 +113,8 @@ def start_cex_io_client(file, client_id, cache_db, cex_io_url):
     try:
         cex_io_client = Cex_IO(cex_io_url, client_id)
         cex_io_client.check_for_clicks()
-        cache_db.set('next_cexio_click', cex_io_client.farms_end_time())
-        cache_db.set('cex_io_balance', cex_io_client.balance())
+        cache_db.set('next_cexio_click', time.time() + (60*60)) # 1H
+        cache_db.set('cex_io_balance', cex_io_client.balance()[0])
     except Exception as e:
         logger.error(f'Error in building Cex_IO[{file}]: ' + str(e))
 
@@ -118,10 +123,10 @@ def start_blum_client(file, client_id, cache_db, blum_url, referralToken):
     if next_blum_click and time.time() < next_blum_click:
         return
     try:
-        cache_db.set('next_blum_click', time.time() + (60*15))
+        cache_db.set('next_blum_click', time.time() + (60*60))
         blum_client = Blum(blum_url, client_id, referralToken)
         blum_client.claim_pass()
-        blum_client.check_claim_and_play()
+        # blum_client.check_claim_and_play()
         cache_db.set('next_blum_click', time.time() + (60*60*8 + 5*60))
         cache_db.set('blum_balance', blum_client.balance()['availableBalance'])
     except Exception as e:
@@ -132,14 +137,15 @@ def start_rabbit_client(file, client_id, cache_db:SimpleCache, rabbit_url):
     if next_rabbit_click and time.time() < next_rabbit_click:
         return
     try:
-        cache_db.set('next_rabbit_click', time.time() + (60*15))
-        if time.time() - cache_db.get('rabbit_url_time') > 60*60*3:
+        cache_db.set('next_rabbit_click', time.time() + (60*random.randint(60, 180)))
+        if time.time() - cache_db.get('rabbit_url_time') > 60*60*2:
             return
         rabbit_client = RockyRabbitAPI(rabbit_url, client_id)
         if not cache_db.exists('rabbit_init'):
             rabbit_client.account_init()
             cache_db.set('rabbit_init', time.time())
-        
+        rabbit_client.account_start()
+        rabbit_client.do_daily_tasks()
         time_for_recharge = rabbit_client.tap_all()
         if time_for_recharge == 'init data':
             return
