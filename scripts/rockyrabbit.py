@@ -1,8 +1,11 @@
 import requests
+import random
 import time
 from urllib.parse import urlparse, parse_qs
+import cloudscraper
 
 from scripts.logger import setup_custom_logger
+from threading import Thread
 
 class RockyRabbitAPI:
     def __init__(self, url, client_id=None):
@@ -24,7 +27,19 @@ class RockyRabbitAPI:
             'league_data': f'{self.api_base_url}/api/v1/account/level_other',
             'league_user': f'{self.api_base_url}/api/v1/account/level_current'
         }
-        self.headers = {}
+        self.headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en-US,en;q=0.9,fa;q=0.8",
+            "Cookie": "_ga=GA1.1.1312482670.1719694915; _ga_TXH0K1NKKJ=GS1.1.1720119207.3.0.1720119209.0.0.0",
+            "Priority": "u=0, i",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+        }
         self.init_data_raw = ""
         self.cache = {}
         self.active = True
@@ -41,9 +56,10 @@ class RockyRabbitAPI:
         return self.init_data_raw
 
     def make_request(self, method: str, url: str, **kwargs) -> dict:
+        scraper = cloudscraper.create_scraper()
         for _ in range(5):
             try:
-                response = requests.request(method, url, headers=self.headers, **kwargs)
+                response = scraper.request(method, url, headers=self.headers, **kwargs)
                 response_data = response.json()
                 return response_data
             except Exception as e:
@@ -109,14 +125,7 @@ class RockyRabbitAPI:
         return self.make_request('POST', self.api_endpoints['league_user'])
     
     def balance(self):
-        if not 'account_start' in self.cache:
-            self.account_start()
         return self.cache['account_start']['clicker']['balance']
-    
-    def profit(self):
-        if not 'account_start' in self.cache:
-            self.account_start()
-        return self.cache['account_start']['clicker']['earnPassivePerHour']
 
     def calculate_refill_time(self, account_data):
         max_taps = account_data['clicker']['maxTaps']
