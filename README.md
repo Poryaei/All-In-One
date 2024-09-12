@@ -8,11 +8,11 @@ An automatic clicker for the (Hamster ~ TapSwap ~ CexIO ~ Blum ~ Rocky Rabbit) b
 
 | **Bot**  | **Status**  |
 |:--------:|:-----------:|
-| **Blum** | ✔️ Active   |
 | **Hamster** | ✔️ Active   |
 | **CexIO** | ✔️ Active   |
 | **Rocky Rabbit** | ✔️ Active   |
 | **TapSwap** | ❌ Inactive |
+| **Blum** | ❌ Inactive   |
 
 </div>
 
