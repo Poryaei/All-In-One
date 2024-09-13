@@ -13,6 +13,8 @@ with open('config.json') as f:
     api_hash         = data['api_hash']
     cexio_ref_code   = data['cexio_ref_code']
     blum_ref_code    = data['blum_ref_code']
+    device_name      = data['device_name']
+    tg_version       = data['tg_version']
 
 def getUrl(client: TelegramClient, peer: str, bot: str, url: str, platform: str = "ios", start_param: str = ""):
     return client(
@@ -111,8 +113,9 @@ def create_client(api_id, api_hash, admin, cexio_ref_code):
         f'sessions/{session_name}',
         api_id,
         api_hash,
-        device_model=f"All-In-One(MA)"
+        device_model=device_name
     )
+    client.__version__ = tg_version
 
     print("[INFO] Starting Telegram client...")
     client.start()
